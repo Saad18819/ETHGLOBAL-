@@ -1,0 +1,57 @@
+:root {
+  --bg: #faf9f7;
+  --surface: #ffffff;
+  --ink: #17161b;
+  --muted: #8b8893;
+  --faint: #b9b6bf;
+  --line: #ecebe7;
+  --violet: #ecebfb;
+  --violet-ink: #3a3186;
+  --green: #e2f3e8;
+  --green-ink: #1d6a40;
+  --sand: #f4efe4;
+  --sand-ink: #6d5a2e;
+  --red-ink: #a33a2b;
+  --radius: 14px;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+html,
+body {
+  margin: 0;
+  padding: 0;
+}
+
+body {
+  min-height: 100vh;
+  background: var(--bg);
+  color: var(--ink);
+  font-family: var(--font-sans), system-ui, sans-serif;
+  font-feature-settings: "ss01", "cv11";
+  -webkit-font-smoothing: antialiased;
+}
+
+a {
+  color: inherit;
+}
+
+button,
+input {
+  font: inherit;
+  color: inherit;
+}
+
+button {
+  cursor: pointer;
+}
+
+button:disabled {
+  cursor: default;
+}
+
+.mono {
+  font-family: var(--font-mono), ui-monospace, monospace;
+}
