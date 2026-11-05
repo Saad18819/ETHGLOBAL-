@@ -11,6 +11,12 @@ import {PoolModifyLiquidityTest} from "@uniswap/v4-core/src/test/PoolModifyLiqui
 import {PoolKey} from "@uniswap/v4-core/src/types/PoolKey.sol";
 import {Currency} from "@uniswap/v4-core/src/types/Currency.sol";
 import {ModifyLiquidityParams} from "@uniswap/v4-core/src/types/PoolOperation.sol";
+import {PositionManager} from "@uniswap/v4-periphery/src/PositionManager.sol";
+import {IPositionManager} from "@uniswap/v4-periphery/src/interfaces/IPositionManager.sol";
+import {IPositionDescriptor} from "@uniswap/v4-periphery/src/interfaces/IPositionDescriptor.sol";
+import {IWETH9} from "@uniswap/v4-periphery/src/interfaces/external/IWETH9.sol";
+import {IAllowanceTransfer} from "permit2/src/interfaces/IAllowanceTransfer.sol";
+import {IERC721} from "@openzeppelin/contracts/token/ERC721/IERC721.sol";
 
 import {AndThenSettlement} from "../src/AndThenSettlement.sol";
 import {AndThenRouter} from "../src/AndThenRouter.sol";
@@ -18,7 +24,7 @@ import {InvoiceBook} from "../src/InvoiceBook.sol";
 import {IMessageTransmitterV2, ITokenMessengerV2} from "../src/interfaces/ICCTP.sol";
 import {IRouterClient} from "@chainlink/contracts-ccip/contracts/interfaces/IRouterClient.sol";
 import {Action, Intent, Receipt as SettlementReceipt} from "../src/libraries/Intent.sol";
-import {MockToken, MockMessageTransmitter, MockTokenMessenger, MockCCIPRouter} from "./mocks/Mocks.sol";
+import {MockToken, MockMessageTransmitter, MockTokenMessenger, MockCCIPRouter, MockVault} from "./mocks/Mocks.sol";
 
 contract AndThenTest is Test {
     uint64 constant BASE = 10344971235874465080;
@@ -38,6 +44,8 @@ contract AndThenTest is Test {
     MockMessageTransmitter transmitter;
     AndThenSettlement settlement;
     PoolKey eurcPool;
+    PositionManager positions;
+    MockVault vault;
 
     // Base side. Both chains share one EVM here, so Base gets its own USDC.
     MockToken baseUsdc;
@@ -57,9 +65,19 @@ contract AndThenTest is Test {
         arcPools = new PoolManager(address(this));
         arcCcip = new MockCCIPRouter(0.1e6);
         transmitter = new MockMessageTransmitter(usdc);
+        IAllowanceTransfer permit2 = IAllowanceTransfer(deployCode("Permit2.sol:Permit2"));
+        positions = new PositionManager(arcPools, permit2, 100_000, IPositionDescriptor(address(0)), IWETH9(address(0)));
         settlement = new AndThenSettlement(
-            address(arcCcip), arcPools, usdc, IMessageTransmitterV2(address(transmitter)), address(this)
+            address(arcCcip),
+            arcPools,
+            usdc,
+            IMessageTransmitterV2(address(transmitter)),
+            IPositionManager(address(positions)),
+            permit2,
+            address(this)
         );
+        vault = new MockVault(IERC20(address(usdc)));
+        settlement.setVault(address(vault), true);
         eurcPool = _seedPool(arcPools, usdc, eurc);
         settlement.setPool(address(eurc), eurcPool);
         // Mock tokens have no native twin, so tests pay receipts in the ERC20.
@@ -142,6 +160,51 @@ contract AndThenTest is Test {
 
         assertGt(eurc.balanceOf(payee), 19e6);
         assertEq(usdc.balanceOf(payer), 0);
+    }
+
+    function test_Earn_DepositsIntoVaultForRecipient() public {
+        Intent memory intent = _intent(Action.Earn, address(vault), 30e6, address(0));
+
+        _deliverIntent(intent);
+        settlement.receiveFunds(_burnMessage(intent.id, 30e6, 0, address(router)), "");
+
+        assertEq(vault.balanceOf(payee), 30e6);
+        assertEq(vault.totalAssets(), 30e6);
+        assertEq(usdc.balanceOf(address(settlement)), 0);
+    }
+
+    function test_Earn_RefundsWhenVaultNotAllowed() public {
+        MockVault other = new MockVault(IERC20(address(usdc)));
+        Intent memory intent = _intent(Action.Earn, address(other), 0, address(0));
+
+        _deliverIntent(intent);
+        settlement.receiveFunds(_burnMessage(intent.id, 30e6, 0, address(router)), "");
+
+        assertEq(usdc.balanceOf(payer), 30e6);
+        assertEq(uint256(settlement.getOrder(intent.id).status), uint256(AndThenSettlement.Status.Failed));
+    }
+
+    function test_RevertWhen_VaultAssetIsNotUsdc() public {
+        MockVault wrong = new MockVault(IERC20(address(eurc)));
+        vm.expectRevert(abi.encodeWithSelector(AndThenSettlement.UnknownVault.selector, address(wrong)));
+        settlement.setVault(address(wrong), true);
+    }
+
+    function test_Provide_MintsFullRangePositionToRecipient() public {
+        Intent memory intent = _intent(Action.Provide, address(eurc), 1, address(0));
+        uint256 tokenId = positions.nextTokenId();
+
+        _deliverIntent(intent);
+        settlement.receiveFunds(_burnMessage(intent.id, 100e6, 0, address(router)), "");
+
+        assertEq(uint256(settlement.getOrder(intent.id).status), uint256(AndThenSettlement.Status.Settled));
+        assertEq(IERC721(address(positions)).ownerOf(tokenId), payee);
+        assertGt(positions.getPositionLiquidity(tokenId), 0);
+        // Only rounding dust is left over, and none of it stays in the contract
+        assertLt(usdc.balanceOf(payer), 0.1e6);
+        assertLt(eurc.balanceOf(payee), 0.1e6);
+        assertEq(usdc.balanceOf(address(settlement)), 0);
+        assertEq(eurc.balanceOf(address(settlement)), 0);
     }
 
     function test_Underfunded_RefundsAndReportsFailure() public {

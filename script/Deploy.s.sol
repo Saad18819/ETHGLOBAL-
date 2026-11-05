@@ -8,6 +8,8 @@ import {IPoolManager} from "@uniswap/v4-core/src/interfaces/IPoolManager.sol";
 import {IHooks} from "@uniswap/v4-core/src/interfaces/IHooks.sol";
 import {PoolKey} from "@uniswap/v4-core/src/types/PoolKey.sol";
 import {Currency} from "@uniswap/v4-core/src/types/Currency.sol";
+import {IPositionManager} from "@uniswap/v4-periphery/src/interfaces/IPositionManager.sol";
+import {IAllowanceTransfer} from "permit2/src/interfaces/IAllowanceTransfer.sol";
 
 import {AndThenSettlement} from "../src/AndThenSettlement.sol";
 import {AndThenRouter} from "../src/AndThenRouter.sol";
@@ -30,6 +32,10 @@ library Testnet {
     address constant ARC_EURC = 0x89B50855Aa3bE2F677cD6303Cec089B5F319D72a;
     address constant ARC_CCIP_ROUTER = 0xdE4E7FED43FAC37EB21aA0643d9852f75332eab8;
     address constant ARC_POOL_MANAGER = 0x8366a39CC670B4001A1121B8F6A443A643e40951;
+    address constant ARC_POSITION_MANAGER = 0x6049c9a0e26405C0985f9E3685C87d0aE917f82B;
+    address constant PERMIT2 = 0x000000000022D473030F116dDEE9F6B43aC78BA3;
+    // Morpho vault listed by Circle Earn on Arc testnet (kit.earn.exploreVaults)
+    address constant ARC_MORPHO_USDC_VAULT = 0x8f2D33B5D4B9B5F02DF635AE308F7B4C9dA8D2DC;
 
     address constant BASE_USDC = 0x036CbD53842c5426634e7929541eC2318f3dCF7e;
     address constant BASE_CCIP_ROUTER = 0xD3b06cEbF099CE7DA4AcCf578aaebFDBd6e88a93;
@@ -46,8 +52,11 @@ contract DeployArc is Script {
             IPoolManager(Testnet.ARC_POOL_MANAGER),
             IERC20(Testnet.ARC_USDC),
             IMessageTransmitterV2(Testnet.MESSAGE_TRANSMITTER),
+            IPositionManager(Testnet.ARC_POSITION_MANAGER),
+            IAllowanceTransfer(Testnet.PERMIT2),
             owner
         );
+        settlement.setVault(Testnet.ARC_MORPHO_USDC_VAULT, true);
         // Existing USDC/EURC pool on Arc testnet, 0.05% fee
         settlement.setPool(
             Testnet.ARC_EURC,
@@ -80,7 +89,7 @@ contract DeployBase is Script {
             owner
         );
         // The Base to Arc lane accepts block-depth finality; the settlement allows depth >= 1.
-        router.setConfig(900_000, bytes4(uint32(5)), 1000);
+        router.setConfig(1_200_000, bytes4(uint32(5)), 1000);
         invoices = new InvoiceBook(Testnet.BASE_CCIP_ROUTER, Testnet.ARC_SELECTOR, settlement);
         vm.stopBroadcast();
         console.log("router", address(router));

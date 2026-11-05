@@ -2,6 +2,7 @@
 pragma solidity ^0.8.26;
 
 import {ERC20} from "@openzeppelin/contracts/token/ERC20/ERC20.sol";
+import {ERC4626} from "@openzeppelin/contracts/token/ERC20/extensions/ERC4626.sol";
 import {IERC20} from "@openzeppelin/contracts/token/ERC20/IERC20.sol";
 import {Client} from "@chainlink/contracts-ccip/contracts/libraries/Client.sol";
 import {IAny2EVMMessageReceiver} from "@chainlink/contracts-ccip/contracts/interfaces/IAny2EVMMessageReceiver.sol";
@@ -24,6 +25,10 @@ contract MockToken is ERC20 {
     function burn(address from, uint256 amount) external {
         _burn(from, amount);
     }
+}
+
+contract MockVault is ERC4626 {
+    constructor(IERC20 asset) ERC20("Vault", "vUSDC") ERC4626(asset) {}
 }
 
 /// Mints what a CCTP burn message describes, minus the executed fee.

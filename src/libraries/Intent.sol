@@ -6,7 +6,12 @@ enum Action {
     // Deliver exactly `amount` of `token` to `recipient`. Leftover USDC goes back to the payer.
     Pay,
     // Convert everything that arrived into `token` and send it to `recipient`. `amount` is the minimum out.
-    Deposit
+    Deposit,
+    // Deposit everything into the ERC-4626 vault at `token`; `recipient` gets the shares. `amount` is the minimum.
+    Earn,
+    // Swap about half into `token` and add both sides as a full-range position in the USDC/`token` pool.
+    // The position NFT goes to `recipient`, `amount` is the minimum liquidity.
+    Provide
 }
 
 /// The instruction that travels over CCIP next to a CCTP transfer.

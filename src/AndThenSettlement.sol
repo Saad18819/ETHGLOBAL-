@@ -13,6 +13,13 @@ import {FinalityCodec} from "@chainlink/contracts-ccip/contracts/libraries/Final
 import {IPoolManager} from "@uniswap/v4-core/src/interfaces/IPoolManager.sol";
 import {PoolKey} from "@uniswap/v4-core/src/types/PoolKey.sol";
 import {Currency} from "@uniswap/v4-core/src/types/Currency.sol";
+import {StateLibrary} from "@uniswap/v4-core/src/libraries/StateLibrary.sol";
+import {TickMath} from "@uniswap/v4-core/src/libraries/TickMath.sol";
+import {IPositionManager} from "@uniswap/v4-periphery/src/interfaces/IPositionManager.sol";
+import {Actions} from "@uniswap/v4-periphery/src/libraries/Actions.sol";
+import {LiquidityAmounts} from "@uniswap/v4-periphery/src/libraries/LiquidityAmounts.sol";
+import {IAllowanceTransfer} from "permit2/src/interfaces/IAllowanceTransfer.sol";
+import {IERC4626} from "@openzeppelin/contracts/interfaces/IERC4626.sol";
 
 import {IMessageTransmitterV2} from "./interfaces/ICCTP.sol";
 import {UniswapV4Swapper} from "./UniswapV4Swapper.sol";
@@ -22,6 +29,7 @@ import {Action, Intent, Receipt} from "./libraries/Intent.sol";
 /// Once both are here the instruction runs and a receipt goes back to the source chain.
 contract AndThenSettlement is CCIPReceiver, UniswapV4Swapper, Ownable {
     using SafeERC20 for IERC20;
+    using StateLibrary for IPoolManager;
 
     enum Status {
         Open,
@@ -41,6 +49,8 @@ contract AndThenSettlement is CCIPReceiver, UniswapV4Swapper, Ownable {
 
     IERC20 public immutable usdc;
     IMessageTransmitterV2 public immutable transmitter;
+    IPositionManager public immutable positionManager;
+    IAllowanceTransfer public immutable permit2;
 
     /// CCIP chain selector => our router on that chain.
     mapping(uint64 => address) public sourceRouters;
@@ -48,6 +58,8 @@ contract AndThenSettlement is CCIPReceiver, UniswapV4Swapper, Ownable {
     mapping(uint32 => uint64) public domainSelectors;
     /// Output token => USDC pool used to reach it.
     mapping(address => PoolKey) public pools;
+    /// ERC-4626 vaults with a USDC asset that Earn may deposit into.
+    mapping(address => bool) public vaults;
     mapping(bytes32 => Order) internal orders;
 
     address public feeToken;
@@ -65,6 +77,7 @@ contract AndThenSettlement is CCIPReceiver, UniswapV4Swapper, Ownable {
         address token,
         uint256 amount
     );
+    event PositionMinted(bytes32 indexed id, uint256 indexed tokenId, uint128 liquidity);
     event SettlementFailed(bytes32 indexed id, bytes reason);
     event ReceiptSent(bytes32 indexed id, bytes32 messageId, uint256 fee);
     event ReceiptSkipped(bytes32 indexed id, bytes reason);
@@ -76,16 +89,22 @@ contract AndThenSettlement is CCIPReceiver, UniswapV4Swapper, Ownable {
     error NoPool(address token);
     error OnlySelf();
     error Underfunded(uint256 funded, uint256 needed);
+    error UnknownVault(address vault);
+    error BelowMinimum(uint256 got, uint256 minimum);
 
     constructor(
         address ccipRouter,
         IPoolManager _poolManager,
         IERC20 _usdc,
         IMessageTransmitterV2 _transmitter,
+        IPositionManager _positionManager,
+        IAllowanceTransfer _permit2,
         address owner
     ) CCIPReceiver(ccipRouter) UniswapV4Swapper(_poolManager) Ownable(owner) {
         usdc = _usdc;
         transmitter = _transmitter;
+        positionManager = _positionManager;
+        permit2 = _permit2;
     }
 
     // Inbound
@@ -155,6 +174,9 @@ contract AndThenSettlement is CCIPReceiver, UniswapV4Swapper, Ownable {
     function execute(Intent calldata intent, uint256 funded) external returns (uint256 delivered, uint256 surplus) {
         if (msg.sender != address(this)) revert OnlySelf();
 
+        if (intent.action == Action.Earn) return (_earn(intent, funded), 0);
+        if (intent.action == Action.Provide) return _provide(intent, funded);
+
         bool direct = intent.token == address(usdc);
         uint256 spent;
 
@@ -173,6 +195,65 @@ contract AndThenSettlement is CCIPReceiver, UniswapV4Swapper, Ownable {
 
         IERC20(intent.token).safeTransfer(intent.recipient, delivered);
         surplus = funded - spent;
+    }
+
+    /// Deposits everything into a Morpho (ERC-4626) vault; the recipient gets the shares.
+    function _earn(Intent calldata intent, uint256 funded) internal returns (uint256 shares) {
+        if (!vaults[intent.token]) revert UnknownVault(intent.token);
+        usdc.forceApprove(intent.token, funded);
+        shares = IERC4626(intent.token).deposit(funded, intent.recipient);
+        if (shares < intent.amount) revert BelowMinimum(shares, intent.amount);
+    }
+
+    /// Swaps half into the pool's other token and mints a full-range position to the recipient.
+    /// Returns the liquidity minted and the USDC left over; leftover of the other token goes to the recipient.
+    function _provide(Intent calldata intent, uint256 funded) internal returns (uint256, uint256) {
+        PoolKey memory key = _pool(intent.token);
+        IERC20 other = IERC20(intent.token);
+
+        uint256 otherBefore = other.balanceOf(address(this));
+        uint256 half = funded / 2;
+        uint256 otherAmount = _swapExactIn(key, address(usdc), half, 0);
+        uint256 usdcAmount = funded - half;
+
+        int24 lower = TickMath.minUsableTick(key.tickSpacing);
+        int24 upper = TickMath.maxUsableTick(key.tickSpacing);
+        bool usdcIsZero = Currency.unwrap(key.currency0) == address(usdc);
+        (uint256 amount0, uint256 amount1) = usdcIsZero ? (usdcAmount, otherAmount) : (otherAmount, usdcAmount);
+
+        (uint160 sqrtPriceX96,,,) = poolManager.getSlot0(key.toId());
+        uint128 liquidity = LiquidityAmounts.getLiquidityForAmounts(
+            sqrtPriceX96, TickMath.getSqrtPriceAtTick(lower), TickMath.getSqrtPriceAtTick(upper), amount0, amount1
+        );
+        // Leave room for the rounding up PositionManager does when it prices the liquidity.
+        liquidity -= liquidity / 10_000 + 1;
+        if (liquidity < intent.amount) revert BelowMinimum(liquidity, intent.amount);
+
+        _approvePositions(address(usdc), usdcAmount);
+        _approvePositions(address(other), otherAmount);
+
+        bytes[] memory params = new bytes[](2);
+        params[0] = abi.encode(
+            key, lower, upper, uint256(liquidity), uint128(amount0), uint128(amount1), intent.recipient, bytes("")
+        );
+        params[1] = abi.encode(key.currency0, key.currency1);
+
+        uint256 tokenId = positionManager.nextTokenId();
+        uint256 usdcBefore = usdc.balanceOf(address(this));
+        positionManager.modifyLiquidities(
+            abi.encode(abi.encodePacked(uint8(Actions.MINT_POSITION), uint8(Actions.SETTLE_PAIR)), params),
+            block.timestamp
+        );
+        emit PositionMinted(intent.id, tokenId, liquidity);
+
+        uint256 otherLeft = other.balanceOf(address(this)) - otherBefore;
+        if (otherLeft > 0) other.safeTransfer(intent.recipient, otherLeft);
+        return (liquidity, usdcAmount - (usdcBefore - usdc.balanceOf(address(this))));
+    }
+
+    function _approvePositions(address token, uint256 amount) internal {
+        IERC20(token).forceApprove(address(permit2), amount);
+        permit2.approve(token, address(positionManager), uint160(amount), uint48(block.timestamp));
     }
 
     /// Sends the receipt if the source asked for one. Returns how much of `available` paid for it.
@@ -264,6 +345,11 @@ contract AndThenSettlement is CCIPReceiver, UniswapV4Swapper, Ownable {
             : Currency.unwrap(key.currency0);
         if (other != token) revert NoPool(token);
         pools[token] = key;
+    }
+
+    function setVault(address vault, bool allowed) external onlyOwner {
+        if (allowed && IERC4626(vault).asset() != address(usdc)) revert UnknownVault(vault);
+        vaults[vault] = allowed;
     }
 
     function setReceiptConfig(address _feeToken, uint32 gasLimit) external onlyOwner {
