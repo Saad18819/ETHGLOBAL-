@@ -13,6 +13,7 @@ remappings = [
     "@chainlink/contracts-ccip/=node_modules/@chainlink/contracts-ccip/",
     "@uniswap/v4-core/=lib/v4-core/",
     "permit2/=lib/permit2/",
+    "solmate/=lib/v4-core/lib/solmate/",
     "forge-std/=lib/forge-std/src/",
 ]
 
