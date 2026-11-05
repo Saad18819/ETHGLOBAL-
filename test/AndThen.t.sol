@@ -62,6 +62,8 @@ contract AndThenTest is Test {
         );
         eurcPool = _seedPool(arcPools, usdc, eurc);
         settlement.setPool(address(eurc), eurcPool);
+        // Mock tokens have no native twin, so tests pay receipts in the ERC20.
+        settlement.setReceiptConfig(address(usdc), 200_000);
 
         baseUsdc = new MockToken("USDC", 6);
         weth = new MockToken("WETH", 6);
@@ -165,6 +167,21 @@ contract AndThenTest is Test {
         assertEq(usdc.balanceOf(payee), 100e6);
         assertEq(settlement.feeReserve(), 0.9e6);
         assertEq(arcCcip.sent(), 1);
+    }
+
+    function test_ReceiptPaidInNativeUsdc() public {
+        settlement.setReceiptConfig(address(0), 200_000);
+        // On Arc the native balance and the USDC ERC20 are the same money; the mock needs both set.
+        vm.deal(address(settlement), 1 ether);
+        Intent memory intent = _intent(Action.Pay, address(usdc), 10e6, address(invoices));
+
+        _deliverIntent(intent);
+        settlement.receiveFunds(_burnMessage(intent.id, 11e6, 0, address(router)), "");
+
+        assertEq(arcCcip.sent(), 1);
+        assertEq(address(arcCcip).balance, 0.1e6);
+        // 0.1e6 wei rounds up to one unit of 6-decimal USDC
+        assertEq(usdc.balanceOf(payer), 1e6 - 1);
     }
 
     function test_SkipsReceiptWhenNothingPaysForIt() public {

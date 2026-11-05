@@ -4,6 +4,7 @@ pragma solidity ^0.8.26;
 import {IERC20} from "@openzeppelin/contracts/token/ERC20/IERC20.sol";
 import {SafeERC20} from "@openzeppelin/contracts/token/ERC20/utils/SafeERC20.sol";
 import {Ownable} from "@openzeppelin/contracts/access/Ownable.sol";
+import {Math} from "@openzeppelin/contracts/utils/math/Math.sol";
 import {CCIPReceiver} from "@chainlink/contracts-ccip/contracts/applications/CCIPReceiver.sol";
 import {IRouterClient} from "@chainlink/contracts-ccip/contracts/interfaces/IRouterClient.sol";
 import {Client} from "@chainlink/contracts-ccip/contracts/libraries/Client.sol";
@@ -34,6 +35,9 @@ contract AndThenSettlement is CCIPReceiver, UniswapV4Swapper, Ownable {
         uint256 funded;
         Status status;
     }
+
+    /// On Arc the native balance is USDC with 18 decimals, the ERC20 view of it has 6.
+    uint256 public constant NATIVE_SCALE = 1e12;
 
     IERC20 public immutable usdc;
     IMessageTransmitterV2 public immutable transmitter;
@@ -82,7 +86,6 @@ contract AndThenSettlement is CCIPReceiver, UniswapV4Swapper, Ownable {
     ) CCIPReceiver(ccipRouter) UniswapV4Swapper(_poolManager) Ownable(owner) {
         usdc = _usdc;
         transmitter = _transmitter;
-        feeToken = address(_usdc);
     }
 
     // Inbound
@@ -201,24 +204,27 @@ contract AndThenSettlement is CCIPReceiver, UniswapV4Swapper, Ownable {
         IRouterClient router = IRouterClient(getRouter());
         uint256 fee = router.getFee(order.sourceChain, message);
 
-        // The order's own leftover pays first, the reserve covers the rest.
-        if (feeToken == address(usdc)) {
-            fromOrder = fee < available ? fee : available;
-            if (fee - fromOrder > feeReserve) {
+        // Paid in USDC (native or ERC20): the order's own leftover pays first, the reserve covers the rest.
+        bool native = feeToken == address(0);
+        bool inUsdc = native || feeToken == address(usdc);
+        uint256 cost = native ? Math.ceilDiv(fee, NATIVE_SCALE) : fee;
+        if (inUsdc) {
+            fromOrder = cost < available ? cost : available;
+            if (cost - fromOrder > feeReserve) {
                 emit ReceiptSkipped(intent.id, "fee");
                 return 0;
             }
-            feeReserve -= fee - fromOrder;
+            feeReserve -= cost - fromOrder;
         } else if (IERC20(feeToken).balanceOf(address(this)) < fee) {
             emit ReceiptSkipped(intent.id, "fee");
             return 0;
         }
 
-        IERC20(feeToken).forceApprove(address(router), fee);
-        try router.ccipSend(order.sourceChain, message) returns (bytes32 messageId) {
+        if (!native) IERC20(feeToken).forceApprove(address(router), fee);
+        try router.ccipSend{value: native ? fee : 0}(order.sourceChain, message) returns (bytes32 messageId) {
             emit ReceiptSent(intent.id, messageId, fee);
         } catch (bytes memory reason) {
-            if (feeToken == address(usdc)) feeReserve += fee - fromOrder;
+            if (inUsdc) feeReserve += cost - fromOrder;
             fromOrder = 0;
             emit ReceiptSkipped(intent.id, reason);
         }
