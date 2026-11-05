@@ -9,8 +9,8 @@ enum Action {
     Deposit,
     // Deposit everything into the ERC-4626 vault at `token`; `recipient` gets the shares. `amount` is the minimum.
     Earn,
-    // Swap about half into `token` and add both sides as a full-range position in the USDC/`token` pool.
-    // The position NFT goes to `recipient`, `amount` is the minimum liquidity.
+    // Swap about half into `token` and add both sides as a position in the USDC/`token` pool.
+    // The position NFT goes to `recipient`, `amount` is the minimum liquidity, `data` may set the tick range.
     Provide
 }
 
@@ -25,6 +25,8 @@ struct Intent {
     bytes32 invoiceId;
     // Contract on the source chain that wants a receipt, or zero for none.
     address replyTo;
+    // Action specific. Provide: abi.encode(int24 tickLower, int24 tickUpper), empty for full range.
+    bytes data;
 }
 
 /// The receipt sent back over CCIP after settlement.

@@ -207,6 +207,40 @@ contract AndThenTest is Test {
         assertEq(eurc.balanceOf(address(settlement)), 0);
     }
 
+    function test_Provide_UsesRequestedRange() public {
+        Intent memory intent = _intent(Action.Provide, address(eurc), 1, address(0));
+        intent.data = abi.encode(int24(-100), int24(100));
+        uint256 tokenId = positions.nextTokenId();
+
+        _deliverIntent(intent);
+        settlement.receiveFunds(_burnMessage(intent.id, 100e6, 0, address(router)), "");
+
+        assertEq(IERC721(address(positions)).ownerOf(tokenId), payee);
+        // A narrow range holds far more liquidity per dollar than full range
+        assertGt(positions.getPositionLiquidity(tokenId), 1e10);
+    }
+
+    function test_Provide_RefundsOnBadRange() public {
+        Intent memory intent = _intent(Action.Provide, address(eurc), 1, address(0));
+        intent.data = abi.encode(int24(100), int24(-100));
+
+        _deliverIntent(intent);
+        settlement.receiveFunds(_burnMessage(intent.id, 50e6, 0, address(router)), "");
+
+        assertEq(uint256(settlement.getOrder(intent.id).status), uint256(AndThenSettlement.Status.Failed));
+        assertEq(usdc.balanceOf(payer), 50e6);
+    }
+
+    function test_Router_StandardTransferPassesFinality() public {
+        baseUsdc.mint(payer, 2e6);
+        vm.startPrank(payer);
+        baseUsdc.approve(address(router), 2e6);
+        router.send{value: 0.001 ether}(_draft(Action.Pay, address(usdc), 1e6, address(0)), 2e6, 0, 2000);
+        vm.stopPrank();
+        (,,,,, uint32 finality,) = messenger.last();
+        assertEq(finality, 2000);
+    }
+
     function test_Underfunded_RefundsAndReportsFailure() public {
         Intent memory intent = _intent(Action.Pay, address(usdc), 100e6, address(invoices));
         settlement.fundReceipts(_mintTo(address(this), 1e6));
@@ -294,7 +328,7 @@ contract AndThenTest is Test {
 
         vm.startPrank(payer);
         baseUsdc.approve(address(router), 10e6);
-        bytes32 id = router.send{value: 0.01 ether}(draft, 10e6, 0.001e6);
+        bytes32 id = router.send{value: 0.01 ether}(draft, 10e6, 0.001e6, 1000);
         vm.stopPrank();
 
         (
@@ -329,7 +363,7 @@ contract AndThenTest is Test {
 
         vm.startPrank(payer);
         weth.approve(address(router), 6e6);
-        router.swapAndSend{value: 0.001 ether}(wethPool, address(weth), 6e6, 5.9e6, draft, 0);
+        router.swapAndSend{value: 0.001 ether}(wethPool, address(weth), 6e6, 5.9e6, draft, 0, 2000);
         vm.stopPrank();
 
         (uint256 amount,,,,,,) = messenger.last();
@@ -340,7 +374,7 @@ contract AndThenTest is Test {
     function test_Router_RevertWhen_PoolIsNotUsdc() public {
         PoolKey memory other = _seedPool(basePools, weth, new MockToken("X", 6));
         vm.expectRevert(AndThenRouter.NotUsdcPool.selector);
-        router.swapAndSend(other, address(weth), 1, 0, _draft(Action.Pay, address(usdc), 1, address(0)), 0);
+        router.swapAndSend(other, address(weth), 1, 0, _draft(Action.Pay, address(usdc), 1, address(0)), 0, 1000);
     }
 
     function test_Router_RevertWhen_FeeTooLow() public {
@@ -348,7 +382,7 @@ contract AndThenTest is Test {
         vm.startPrank(payer);
         baseUsdc.approve(address(router), 1e6);
         vm.expectRevert(abi.encodeWithSelector(AndThenRouter.FeeTooLow.selector, 0.001 ether));
-        router.send(_draft(Action.Pay, address(usdc), 1e6, address(0)), 1e6, 0);
+        router.send(_draft(Action.Pay, address(usdc), 1e6, address(0)), 1e6, 0, 1000);
         vm.stopPrank();
     }
 
@@ -365,7 +399,7 @@ contract AndThenTest is Test {
 
         vm.startPrank(payer);
         baseUsdc.approve(address(router), 26e6);
-        bytes32 id = router.send{value: 0.001 ether}(draft, 26e6, 0.01e6);
+        bytes32 id = router.send{value: 0.001 ether}(draft, 26e6, 0.01e6, 1000);
         vm.stopPrank();
 
         // CCIP carries the instruction, CCTP carries the money
@@ -411,7 +445,8 @@ contract AndThenTest is Test {
             token: token,
             amount: amount,
             invoiceId: bytes32(0),
-            replyTo: replyTo
+            replyTo: replyTo,
+            data: ""
         });
     }
 

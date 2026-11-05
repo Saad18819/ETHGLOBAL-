@@ -91,6 +91,7 @@ contract AndThenSettlement is CCIPReceiver, UniswapV4Swapper, Ownable {
     error Underfunded(uint256 funded, uint256 needed);
     error UnknownVault(address vault);
     error BelowMinimum(uint256 got, uint256 minimum);
+    error BadRange(int24 lower, int24 upper);
 
     constructor(
         address ccipRouter,
@@ -205,7 +206,7 @@ contract AndThenSettlement is CCIPReceiver, UniswapV4Swapper, Ownable {
         if (shares < intent.amount) revert BelowMinimum(shares, intent.amount);
     }
 
-    /// Swaps half into the pool's other token and mints a full-range position to the recipient.
+    /// Swaps half into the pool's other token and mints a position to the recipient.
     /// Returns the liquidity minted and the USDC left over; leftover of the other token goes to the recipient.
     function _provide(Intent calldata intent, uint256 funded) internal returns (uint256, uint256) {
         PoolKey memory key = _pool(intent.token);
@@ -216,8 +217,7 @@ contract AndThenSettlement is CCIPReceiver, UniswapV4Swapper, Ownable {
         uint256 otherAmount = _swapExactIn(key, address(usdc), half, 0);
         uint256 usdcAmount = funded - half;
 
-        int24 lower = TickMath.minUsableTick(key.tickSpacing);
-        int24 upper = TickMath.maxUsableTick(key.tickSpacing);
+        (int24 lower, int24 upper) = _range(intent.data, key.tickSpacing);
         bool usdcIsZero = Currency.unwrap(key.currency0) == address(usdc);
         (uint256 amount0, uint256 amount1) = usdcIsZero ? (usdcAmount, otherAmount) : (otherAmount, usdcAmount);
 
@@ -249,6 +249,12 @@ contract AndThenSettlement is CCIPReceiver, UniswapV4Swapper, Ownable {
         uint256 otherLeft = other.balanceOf(address(this)) - otherBefore;
         if (otherLeft > 0) other.safeTransfer(intent.recipient, otherLeft);
         return (liquidity, usdcAmount - (usdcBefore - usdc.balanceOf(address(this))));
+    }
+
+    function _range(bytes calldata data, int24 spacing) internal pure returns (int24 lower, int24 upper) {
+        if (data.length == 0) return (TickMath.minUsableTick(spacing), TickMath.maxUsableTick(spacing));
+        (lower, upper) = abi.decode(data, (int24, int24));
+        if (lower >= upper || lower % spacing != 0 || upper % spacing != 0) revert BadRange(lower, upper);
     }
 
     function _approvePositions(address token, uint256 amount) internal {

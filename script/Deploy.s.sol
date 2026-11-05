@@ -22,8 +22,10 @@ library Testnet {
     uint64 constant ARC_SELECTOR = 3034092155422581607;
     uint64 constant BASE_SELECTOR = 10344971235874465080;
     uint64 constant SEPOLIA_SELECTOR = 16015286601757825753;
+    uint64 constant AMOY_SELECTOR = 16281711391670634445;
     uint32 constant BASE_DOMAIN = 6;
     uint32 constant SEPOLIA_DOMAIN = 0;
+    uint32 constant AMOY_DOMAIN = 7;
 
     address constant TOKEN_MESSENGER = 0x8FE6B999Dc680CcFDD5Bf7EB0974218be2542DAA;
     address constant MESSAGE_TRANSMITTER = 0xE737e5cEBEEBa77EFE34D4aa090756590b1CE275;
@@ -40,6 +42,37 @@ library Testnet {
     address constant BASE_USDC = 0x036CbD53842c5426634e7929541eC2318f3dCF7e;
     address constant BASE_CCIP_ROUTER = 0xD3b06cEbF099CE7DA4AcCf578aaebFDBd6e88a93;
     address constant BASE_POOL_MANAGER = 0x05E73354cFDd6745C338b50BcFDfA3Aa6fA03408;
+
+    address constant SEPOLIA_USDC = 0x1c7D4B196Cb0C7B01d743Fbc6116a902379C7238;
+    address constant SEPOLIA_CCIP_ROUTER = 0x0BF3dE8c5D3e8A2B34D2BEeB17ABfCeBaf363A59;
+    address constant SEPOLIA_POOL_MANAGER = 0xE03A1074c86CFeDd5C142C4F04F1a1536e203543;
+
+    address constant AMOY_USDC = 0x41E94Eb019C0762f9Bfcf9Fb1E58725BfB0e7582;
+    address constant AMOY_CCIP_ROUTER = 0x9C32fCB86BF0f4a1A8921a9Fe46de3198bb884B2;
+
+    struct Source {
+        uint64 selector;
+        uint32 domain;
+        address usdc;
+        address ccipRouter;
+        // Uniswap v4 is not deployed on Amoy, so swapAndSend is unavailable there.
+        address poolManager;
+    }
+
+    /// SOURCE is one of base, sepolia, amoy.
+    function source(string memory name) internal pure returns (Source memory) {
+        bytes32 key = keccak256(bytes(name));
+        if (key == keccak256("base")) {
+            return Source(BASE_SELECTOR, BASE_DOMAIN, BASE_USDC, BASE_CCIP_ROUTER, BASE_POOL_MANAGER);
+        }
+        if (key == keccak256("sepolia")) {
+            return Source(SEPOLIA_SELECTOR, SEPOLIA_DOMAIN, SEPOLIA_USDC, SEPOLIA_CCIP_ROUTER, SEPOLIA_POOL_MANAGER);
+        }
+        if (key == keccak256("amoy")) {
+            return Source(AMOY_SELECTOR, AMOY_DOMAIN, AMOY_USDC, AMOY_CCIP_ROUTER, address(0));
+        }
+        revert("SOURCE must be base, sepolia or amoy");
+    }
 }
 
 /// forge script script/Deploy.s.sol:DeployArc --rpc-url arc_testnet --broadcast
@@ -73,38 +106,39 @@ contract DeployArc is Script {
     }
 }
 
-/// SETTLEMENT=0x... forge script script/Deploy.s.sol:DeployBase --rpc-url base_sepolia --broadcast
-contract DeployBase is Script {
+/// SOURCE=base SETTLEMENT=0x... forge script script/Deploy.s.sol:DeploySource --rpc-url base_sepolia --broadcast
+contract DeploySource is Script {
     function run() external returns (AndThenRouter router, InvoiceBook invoices) {
+        Testnet.Source memory src = Testnet.source(vm.envString("SOURCE"));
         address owner = vm.envAddress("DEPLOYER");
         address settlement = vm.envAddress("SETTLEMENT");
         vm.startBroadcast();
         router = new AndThenRouter(
-            IERC20(Testnet.BASE_USDC),
+            IERC20(src.usdc),
             ITokenMessengerV2(Testnet.TOKEN_MESSENGER),
-            IRouterClient(Testnet.BASE_CCIP_ROUTER),
-            IPoolManager(Testnet.BASE_POOL_MANAGER),
+            IRouterClient(src.ccipRouter),
+            IPoolManager(src.poolManager),
             Testnet.ARC_SELECTOR,
             settlement,
             owner
         );
-        // The Base to Arc lane accepts block-depth finality; the settlement allows depth >= 1.
-        router.setConfig(1_200_000, bytes4(uint32(5)), 1000);
-        invoices = new InvoiceBook(Testnet.BASE_CCIP_ROUTER, Testnet.ARC_SELECTOR, settlement);
+        // Lanes to Arc accept block-depth finality; the settlement allows depth >= 1.
+        router.setConfig(1_200_000, bytes4(uint32(5)));
+        invoices = new InvoiceBook(src.ccipRouter, Testnet.ARC_SELECTOR, settlement);
         vm.stopBroadcast();
         console.log("router", address(router));
         console.log("invoices", address(invoices));
     }
 }
 
-/// SETTLEMENT=0x... BASE_ROUTER=0x... forge script script/Deploy.s.sol:ConnectArc --rpc-url arc_testnet --broadcast
+/// SOURCE=base ROUTER=0x... SETTLEMENT=0x... forge script script/Deploy.s.sol:ConnectArc --rpc-url arc_testnet --broadcast
 contract ConnectArc is Script {
     function run() external {
+        Testnet.Source memory src = Testnet.source(vm.envString("SOURCE"));
         AndThenSettlement settlement = AndThenSettlement(vm.envAddress("SETTLEMENT"));
-        address baseRouter = vm.envAddress("BASE_ROUTER");
         uint256 reserve = vm.envOr("RECEIPT_RESERVE", uint256(0));
         vm.startBroadcast();
-        settlement.setSource(Testnet.BASE_SELECTOR, Testnet.BASE_DOMAIN, baseRouter);
+        settlement.setSource(src.selector, src.domain, vm.envAddress("ROUTER"));
         if (reserve > 0) {
             IERC20(Testnet.ARC_USDC).approve(address(settlement), reserve);
             settlement.fundReceipts(reserve);

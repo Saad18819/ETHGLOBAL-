@@ -30,7 +30,6 @@ contract AndThenRouter is UniswapV4Swapper, Ownable {
     address public settlement;
     uint32 public gasLimit = 600_000;
     bytes4 public ccipFinality;
-    uint32 public cctpFinality = 1000;
     uint256 public nonce;
 
     event Sent(
@@ -58,9 +57,14 @@ contract AndThenRouter is UniswapV4Swapper, Ownable {
     }
 
     /// Pay with USDC already on this chain. `msg.value` covers the CCIP fee, the rest is refunded.
-    function send(Intent memory intent, uint256 amount, uint256 maxFee) external payable returns (bytes32) {
+    /// `cctpFinality` is 1000 for a fast transfer (fee up to `maxFee`) or 2000 for a standard one.
+    function send(Intent memory intent, uint256 amount, uint256 maxFee, uint32 cctpFinality)
+        external
+        payable
+        returns (bytes32)
+    {
         usdc.safeTransferFrom(msg.sender, address(this), amount);
-        return _bridge(intent, amount, maxFee);
+        return _bridge(intent, amount, maxFee, cctpFinality);
     }
 
     /// Pay with any token that has a v4 pool against USDC here.
@@ -70,7 +74,8 @@ contract AndThenRouter is UniswapV4Swapper, Ownable {
         uint256 amountIn,
         uint256 minUsdc,
         Intent memory intent,
-        uint256 maxFee
+        uint256 maxFee,
+        uint32 cctpFinality
     ) external payable returns (bytes32) {
         address tokenOut = Currency.unwrap(key.currency0) == tokenIn
             ? Currency.unwrap(key.currency1)
@@ -79,7 +84,7 @@ contract AndThenRouter is UniswapV4Swapper, Ownable {
 
         IERC20(tokenIn).safeTransferFrom(msg.sender, address(this), amountIn);
         uint256 amount = _swapExactIn(key, tokenIn, amountIn, minUsdc);
-        return _bridge(intent, amount, maxFee);
+        return _bridge(intent, amount, maxFee, cctpFinality);
     }
 
     /// CCIP fee in native gas for sending `intent`.
@@ -87,7 +92,10 @@ contract AndThenRouter is UniswapV4Swapper, Ownable {
         return ccipRouter.getFee(arcSelector, _message(intent));
     }
 
-    function _bridge(Intent memory intent, uint256 amount, uint256 maxFee) internal returns (bytes32 id) {
+    function _bridge(Intent memory intent, uint256 amount, uint256 maxFee, uint32 cctpFinality)
+        internal
+        returns (bytes32 id)
+    {
         id = keccak256(abi.encode(block.chainid, address(this), nonce++));
         intent.id = id;
         intent.payer = msg.sender;
@@ -125,9 +133,8 @@ contract AndThenRouter is UniswapV4Swapper, Ownable {
         settlement = _settlement;
     }
 
-    function setConfig(uint32 _gasLimit, bytes4 _ccipFinality, uint32 _cctpFinality) external onlyOwner {
+    function setConfig(uint32 _gasLimit, bytes4 _ccipFinality) external onlyOwner {
         gasLimit = _gasLimit;
         ccipFinality = _ccipFinality;
-        cctpFinality = _cctpFinality;
     }
 }

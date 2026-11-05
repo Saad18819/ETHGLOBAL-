@@ -21,3 +21,4 @@ remappings = [
 arc_testnet = "https://rpc.testnet.arc.network"
 base_sepolia = "https://sepolia.base.org"
 sepolia = "https://ethereum-sepolia-rpc.publicnode.com"
+polygon_amoy = "https://polygon-amoy-bor-rpc.publicnode.com"
