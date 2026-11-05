@@ -1,0 +1,66 @@
+.steps {
+  display: grid;
+  gap: 14px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.step {
+  display: flex;
+  gap: 12px;
+  align-items: flex-start;
+  font-size: 15px;
+}
+
+.marker {
+  flex: none;
+  width: 10px;
+  height: 10px;
+  margin-top: 6px;
+  border-radius: 50%;
+  border: 1.5px solid var(--faint);
+}
+
+.step[data-state="done"] .marker {
+  background: var(--green-ink);
+  border-color: var(--green-ink);
+}
+
+.step[data-state="active"] .marker {
+  border-color: var(--ink);
+  animation: pulse 1.4s ease-in-out infinite;
+}
+
+.step[data-state="failed"] .marker {
+  background: var(--red-ink);
+  border-color: var(--red-ink);
+}
+
+.step[data-state="waiting"] .text {
+  color: var(--faint);
+}
+
+.text {
+  display: grid;
+  gap: 2px;
+}
+
+.text a {
+  text-decoration: none;
+}
+
+.text a:hover {
+  text-decoration: underline;
+}
+
+.detail {
+  font-size: 13px;
+  color: var(--muted);
+}
+
+@keyframes pulse {
+  50% {
+    opacity: 0.35;
+  }
+}
