@@ -62,3 +62,16 @@
   font-size: 12px;
   color: var(--sand-ink);
 }
+
+.cardHead {
+  display: flex;
+  justify-content: space-between;
+  align-items: baseline;
+  gap: 12px;
+}
+
+.stat {
+  font-size: 12px;
+  color: var(--green-ink);
+  white-space: nowrap;
+}

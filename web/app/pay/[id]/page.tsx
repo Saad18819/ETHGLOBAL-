@@ -9,6 +9,7 @@ import styles from "../pay.module.css";
 import { Composer } from "@/components/Composer";
 import { config } from "@/lib/config";
 import { arc, base, deployed, invoiceAbi } from "@/lib/contracts";
+import { defaultPlan } from "@/lib/plan";
 import { useEurcRate } from "@/lib/quote";
 
 export default function PayLink({ params }: PageProps<"/pay/[id]">) {
@@ -48,6 +49,7 @@ export default function PayLink({ params }: PageProps<"/pay/[id]">) {
         invoiceId={id as Hex}
         replyTo={deployed.invoices}
         initialPlan={{
+          ...defaultPlan,
           amount: suggested.toFixed(2),
           asset: "USDC",
           from: "base",
@@ -55,7 +57,6 @@ export default function PayLink({ params }: PageProps<"/pay/[id]">) {
           recipient: payee,
           payAmount: formatUnits(amount, 6),
           payToken,
-          leverage: "1.5",
         }}
       />
     </main>

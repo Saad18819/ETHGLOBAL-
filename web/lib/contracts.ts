@@ -3,7 +3,7 @@ import { arcTestnet, baseSepolia, sepolia } from "wagmi/chains";
 
 export const deployed = {
   settlement: process.env.NEXT_PUBLIC_SETTLEMENT as Address | undefined,
-  router: process.env.NEXT_PUBLIC_ROUTER as Address | undefined,
+  // Invoices live on Base Sepolia
   invoices: process.env.NEXT_PUBLIC_INVOICES as Address | undefined,
 };
 
@@ -37,10 +37,10 @@ export const ethereum = {
 } as const;
 
 const intent =
-  "(bytes32 id, address payer, uint8 action, address recipient, address token, uint256 amount, bytes32 invoiceId, address replyTo)";
+  "(bytes32 id, address payer, uint8 action, address recipient, address token, uint256 amount, bytes32 invoiceId, address replyTo, bytes data)";
 
 export const routerAbi = parseAbi([
-  `function send(${intent} intent, uint256 amount, uint256 maxFee) payable returns (bytes32)`,
+  `function send(${intent} intent, uint256 amount, uint256 maxFee, uint32 cctpFinality) payable returns (bytes32)`,
   `function quote(${intent} intent) view returns (uint256)`,
   "event Sent(bytes32 indexed id, address indexed payer, bytes32 indexed invoiceId, uint256 usdcAmount, bytes32 ccipMessageId)",
 ]);
