@@ -2,35 +2,32 @@
 
 import { Field, Fixed, Select } from "./Pill";
 import styles from "./Sentence.module.css";
+import { sources } from "@/lib/chains";
+import { percent, type Vault } from "@/lib/markets";
 import {
   assets,
   nextSteps,
+  normalizePlan,
+  ranges,
   routeOf,
-  sources,
   stepOf,
   type AssetId,
-  type Leverage,
+  type HoldToken,
   type NextId,
   type Plan,
+  type Range,
   type SourceId,
 } from "@/lib/plan";
-
-/// Keeps a plan valid after one field changes.
-export function normalizePlan(plan: Plan): Plan {
-  const from = assets[plan.asset].sources.includes(plan.from) ? plan.from : assets[plan.asset].sources[0];
-  const step = stepOf(plan.next);
-  const next = step.fits(plan) ? plan.next : "pay";
-  const payToken = routeOf(plan) === "router" ? plan.payToken : "USDC";
-  return { ...plan, from, next, payToken };
-}
 
 export function Sentence({
   plan,
   onChange,
+  vaults = [],
   locked = false,
 }: {
   plan: Plan;
   onChange: (plan: Plan) => void;
+  vaults?: Vault[];
   locked?: boolean;
 }) {
   const set = (patch: Partial<Plan>) => onChange(normalizePlan({ ...plan, ...patch }));
@@ -49,7 +46,11 @@ export function Sentence({
       <Select<SourceId>
         label="From"
         value={plan.from}
-        options={assets[plan.asset].sources.map((id) => ({ value: id, label: sources[id].label }))}
+        options={assets[plan.asset].sources.map((id) => ({
+          value: id,
+          label: sources[id].label,
+          hint: sources[id].router ? "CCIP" : undefined,
+        }))}
         onChange={(from) => set({ from })}
       />{" "}
       to Arc, <span className={styles.andthen}>and then</span>{" "}
@@ -60,23 +61,65 @@ export function Sentence({
           label="And then"
           tone="green"
           value={plan.next}
-          options={nextSteps
-            .filter((step) => step.fits(plan))
-            .map((step) => ({ value: step.id, label: step.verb }))}
+          options={nextSteps.map((step) => ({
+            value: step.id,
+            label: step.verb.replace(/ (as|on|to)$/, ""),
+            hint: step.blocked(plan),
+            disabled: Boolean(step.blocked(plan)),
+          }))}
           onChange={(next) => set({ next })}
-        />
+        >
+          {stepOf(plan.next).verb}
+        </Select>
+      )}
+      {plan.next === "hold" && (
+        <>
+          {" "}
+          <Select<HoldToken>
+            label="Hold as"
+            tone="green"
+            value={plan.hold}
+            options={(["EURC", "cirBTC"] as const)
+              .filter((token) => token !== plan.asset)
+              .map((token) => ({ value: token, label: token }))}
+            onChange={(hold) => set({ hold })}
+          />
+        </>
+      )}
+      {plan.next === "pool" && (
+        <>
+          {" "}
+          <Select<Range>
+            label="Range"
+            tone="sand"
+            value={plan.range}
+            options={(Object.keys(ranges) as Range[]).map((range) => ({ value: range, label: ranges[range] }))}
+            onChange={(range) => set({ range })}
+          />
+        </>
+      )}
+      {plan.next === "lend" && vaults.length > 0 && (
+        <>
+          {" "}
+          <Select<string>
+            label="Vault"
+            tone="sand"
+            value={plan.vault || vaults[0].address}
+            options={vaults.map((vault) => ({
+              value: vault.address,
+              label: vault.name,
+              hint: `${percent(vault.apy)} APY`,
+            }))}
+            onChange={(vault) => set({ vault })}
+          >
+            Morpho at {percent((vaults.find((v) => v.address === plan.vault) ?? vaults[0]).apy)}
+          </Select>
+        </>
       )}
       {plan.next === "loop" && (
         <>
           {" "}
-          to{" "}
-          <Select<Leverage>
-            label="Leverage"
-            tone="green"
-            value={plan.leverage}
-            options={(["1.3", "1.5", "1.7"] as const).map((value) => ({ value, label: `${value}x` }))}
-            onChange={(leverage) => set({ leverage })}
-          />
+          <Field label="Leverage" numeric value={plan.leverage} onChange={(leverage) => set({ leverage })} />x
         </>
       )}
       {plan.next === "pay" && (

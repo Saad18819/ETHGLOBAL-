@@ -16,11 +16,17 @@ const SETTLED = 1;
 export function RouterTracker({
   id,
   txHash,
+  explorer,
+  source,
+  domain,
   outcome,
   invoiceId,
 }: {
   id: Hex;
   txHash: Hex;
+  explorer: string;
+  source: string;
+  domain: number;
   outcome: string;
   invoiceId?: Hex;
 }) {
@@ -44,7 +50,7 @@ export function RouterTracker({
       const response = await fetch("/api/relay", {
         method: "POST",
         headers: { "content-type": "application/json" },
-        body: JSON.stringify({ txHash, id }),
+        body: JSON.stringify({ txHash, id, domain }),
       });
       return (await response.json()) as { state?: string; hash?: Hex; error?: string };
     },
@@ -72,10 +78,10 @@ export function RouterTracker({
   const intentArrived = Boolean(order.data && order.data.intent.id !== `0x${"0".repeat(64)}`);
   const steps: { label: string; detail?: string; state: State; href?: string }[] = [
     {
-      label: "Sent from Base",
+      label: `Sent from ${source}`,
       detail: "USDC burned over CCTP, instruction sent over CCIP",
       state: "done",
-      href: `${base.explorer}/tx/${txHash}`,
+      href: `${explorer}/tx/${txHash}`,
     },
     {
       label: "Instruction reached Arc",
