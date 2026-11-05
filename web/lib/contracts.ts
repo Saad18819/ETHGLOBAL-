@@ -14,6 +14,10 @@ export const arc = {
   weth: "0x2c4047028a72803939b6fb674D01bC059B5C4961",
   cirbtc: "0xf0C4a4CE82A5746AbAAd9425360Ab04fbBA432BF",
   memo: "0x5294E9927c3306DcBaDb03fe70b92e01cCede505",
+  // Morpho USDC vault listed by Circle Earn, allowlisted in the settlement contract
+  morphoVault: "0x8f2D33B5D4B9B5F02DF635AE308F7B4C9dA8D2DC",
+  // Morpho cirBTC/USDC market listed by Circle Borrow
+  cirbtcMarket: "0xf8a71f6df9dc7725d1c2fd848e4635d1e9ddca11da4e2dc2f9801005bd2b5d58",
   explorer: "https://explorer.testnet.arc.io",
 } as const;
 

@@ -1,6 +1,7 @@
 export type AssetId = "USDC" | "EURC" | "WETH" | "cirBTC";
 export type SourceId = "base" | "ethereum";
-export type NextId = "pay" | "eurc" | "keep" | "pool" | "usyc" | "lend" | "loop";
+export type NextId = "pay" | "eurc" | "keep" | "pool" | "lend" | "loop";
+export type Leverage = "1.3" | "1.5" | "1.7";
 export type PayToken = "USDC" | "EURC";
 
 export type Plan = {
@@ -11,6 +12,7 @@ export type Plan = {
   recipient: string;
   payAmount: string;
   payToken: PayToken;
+  leverage: Leverage;
 };
 
 export const defaultPlan: Plan = {
@@ -21,6 +23,7 @@ export const defaultPlan: Plan = {
   recipient: "",
   payAmount: "9",
   payToken: "EURC",
+  leverage: "1.5",
 };
 
 export const assets: Record<AssetId, { decimals: number; sources: SourceId[]; example: string }> = {
@@ -46,7 +49,6 @@ export type NextStep = {
   title: string;
   body: string;
   verb: string;
-  unavailable?: string;
   fits: (plan: Plan) => boolean;
 };
 
@@ -75,34 +77,23 @@ export const nextSteps: NextStep[] = [
   {
     id: "pool",
     title: "Uniswap pool on Arc",
-    body: "Provide liquidity to the USDC and EURC pool.",
+    body: "Half becomes EURC, both sides go into the USDC/EURC pool. The position NFT is yours.",
     verb: "add it to the USDC/EURC pool",
-    unavailable: "Next up",
-    fits: (plan) => plan.asset === "USDC" || plan.asset === "EURC",
-  },
-  {
-    id: "usyc",
-    title: "Earn in USYC",
-    body: "Tokenized treasury yield, minted from USDC.",
-    verb: "earn in USYC",
-    unavailable: "Needs Circle allowlisting, 24 to 48 hours",
     fits: (plan) => plan.asset === "USDC",
   },
   {
     id: "lend",
-    title: "Aave or Morpho",
-    body: "Supply it and earn the lending rate.",
-    verb: "lend it",
-    unavailable: "Not on Arc testnet yet",
-    fits: () => true,
+    title: "Lend on Morpho",
+    body: "Deposit into a Morpho USDC vault on Arc and earn the lending rate.",
+    verb: "lend it on Morpho",
+    fits: (plan) => plan.asset === "USDC",
   },
   {
     id: "loop",
     title: "Loop it",
-    body: "Borrow against it and buy more, with a set leverage.",
+    body: "Borrow USDC against it on Morpho, buy more cirBTC, and add that as collateral.",
     verb: "loop it",
-    unavailable: "Not on Arc testnet yet",
-    fits: (plan) => plan.asset === "cirBTC" || plan.asset === "WETH",
+    fits: (plan) => plan.asset === "cirBTC",
   },
 ];
 

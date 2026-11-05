@@ -55,6 +55,7 @@ export default function PayLink({ params }: PageProps<"/pay/[id]">) {
           recipient: payee,
           payAmount: formatUnits(amount, 6),
           payToken,
+          leverage: "1.5",
         }}
       />
     </main>

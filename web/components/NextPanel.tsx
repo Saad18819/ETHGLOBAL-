@@ -9,8 +9,7 @@ export function NextPanel({ plan, onPick }: { plan: Plan; onPick: (id: NextId) =
       <h2 className={styles.title}>What&apos;s next</h2>
       <ul className={styles.list}>
         {nextSteps.map((step) => {
-          const fits = step.fits(plan);
-          const usable = fits && !step.unavailable;
+          const usable = step.fits(plan);
           return (
             <li key={step.id}>
               <button
@@ -22,9 +21,7 @@ export function NextPanel({ plan, onPick }: { plan: Plan; onPick: (id: NextId) =
               >
                 <span className={styles.cardTitle}>{step.title}</span>
                 <span className={styles.cardBody}>{step.body}</span>
-                {!usable && (
-                  <span className={styles.note}>{step.unavailable ?? `Not for ${plan.asset}`}</span>
-                )}
+                {!usable && <span className={styles.note}>Not for {plan.asset}</span>}
               </button>
             </li>
           );

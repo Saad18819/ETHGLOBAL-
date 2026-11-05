@@ -9,6 +9,7 @@ import {
   sources,
   stepOf,
   type AssetId,
+  type Leverage,
   type NextId,
   type Plan,
   type SourceId,
@@ -18,7 +19,7 @@ import {
 export function normalizePlan(plan: Plan): Plan {
   const from = assets[plan.asset].sources.includes(plan.from) ? plan.from : assets[plan.asset].sources[0];
   const step = stepOf(plan.next);
-  const next = step.fits(plan) && !step.unavailable ? plan.next : "pay";
+  const next = step.fits(plan) ? plan.next : "pay";
   const payToken = routeOf(plan) === "router" ? plan.payToken : "USDC";
   return { ...plan, from, next, payToken };
 }
@@ -61,14 +62,22 @@ export function Sentence({
           value={plan.next}
           options={nextSteps
             .filter((step) => step.fits(plan))
-            .map((step) => ({
-              value: step.id,
-              label: step.verb,
-              hint: step.unavailable,
-              disabled: Boolean(step.unavailable),
-            }))}
+            .map((step) => ({ value: step.id, label: step.verb }))}
           onChange={(next) => set({ next })}
         />
+      )}
+      {plan.next === "loop" && (
+        <>
+          {" "}
+          to{" "}
+          <Select<Leverage>
+            label="Leverage"
+            tone="green"
+            value={plan.leverage}
+            options={(["1.3", "1.5", "1.7"] as const).map((value) => ({ value, label: `${value}x` }))}
+            onChange={(leverage) => set({ leverage })}
+          />
+        </>
       )}
       {plan.next === "pay" && (
         <>
