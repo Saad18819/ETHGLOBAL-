@@ -1,5 +1,6 @@
 import {
   encodeFunctionData,
+  formatUnits,
   isAddress,
   keccak256,
   parseEventLogs,
@@ -25,7 +26,7 @@ import { config } from "./config";
 import { arc, base, deployed, erc20Abi, memoAbi, routerAbi } from "./contracts";
 import { assets, sources, type Plan } from "./plan";
 
-export const Action = { Pay: 0, Deposit: 1 } as const;
+export const Action = { Pay: 0, Deposit: 1, Earn: 2, Provide: 3 } as const;
 
 export async function resolveRecipient(input: string): Promise<Address> {
   const value = input.trim();
@@ -63,14 +64,10 @@ export async function sendThroughRouter(
   const router = deployed.router;
   const amount = parseUnits(plan.amount, 6);
 
-  const pays = plan.next === "pay";
   const intent = {
     id: zeroHash,
     payer: zeroAddress,
-    action: pays ? Action.Pay : Action.Deposit,
-    recipient: pays ? recipient : account,
-    token: (pays ? plan.payToken === "EURC" : plan.next === "eurc") ? arc.eurc : arc.usdc,
-    amount: pays ? parseUnits(plan.payAmount, 6) : minOut,
+    ...settlementAction(plan, account, recipient, minOut),
     invoiceId: invoiceId ?? zeroHash,
     replyTo: replyTo ?? zeroAddress,
   } as const;
@@ -124,14 +121,36 @@ export async function sendThroughRouter(
   return { id: sent.args.id, txHash };
 }
 
+/// What the settlement contract on Arc does once the USDC is there.
+function settlementAction(plan: Plan, account: Address, recipient: Address, minOut: bigint) {
+  switch (plan.next) {
+    case "pay":
+      return {
+        action: Action.Pay,
+        recipient,
+        token: plan.payToken === "EURC" ? arc.eurc : arc.usdc,
+        amount: parseUnits(plan.payAmount, 6),
+      };
+    case "eurc":
+      return { action: Action.Deposit, recipient: account, token: arc.eurc, amount: minOut };
+    case "pool":
+      return { action: Action.Provide, recipient: account, token: arc.eurc, amount: 1n };
+    case "lend":
+      return { action: Action.Earn, recipient: account, token: arc.morphoVault, amount: 0n };
+    default:
+      return { action: Action.Deposit, recipient: account, token: arc.usdc, amount: 0n };
+  }
+}
+
 const arcTokens = { EURC: arc.eurc, WETH: arc.weth, cirBTC: arc.cirbtc, USDC: arc.usdc } as const;
 const kitTokens = { EURC: "EURC", WETH: "wETH", cirBTC: "cirBTC", USDC: "USDC" } as const;
 
-export type BridgeKitResult = { bridgeSteps: { name: string; explorerUrl?: string }[]; payHash?: Hex };
+type Step = { name: string; explorerUrl?: string };
+export type BridgeKitResult = { bridgeSteps: Step[]; loopSteps?: Step[]; payHash?: Hex };
 
 /// Bridges a non-USDC asset natively with Bridge Kit, then finishes on Arc from the user's wallet.
 export async function sendWithBridgeKit(
-  { plan, recipient, invoiceId }: { plan: Plan; recipient?: Address; invoiceId?: Hex },
+  { plan, account, recipient, invoiceId }: { plan: Plan; account: Address; recipient?: Address; invoiceId?: Hex },
   onStep: (label: string) => void,
 ): Promise<BridgeKitResult> {
   const provider = (window as { ethereum?: unknown }).ethereum;
@@ -161,6 +180,9 @@ export async function sendWithBridgeKit(
     name: step.name,
     explorerUrl: "explorerUrl" in step ? (step.explorerUrl as string | undefined) : undefined,
   }));
+  if (plan.next === "loop") {
+    return { bridgeSteps, loopSteps: await loop(kit, adapter, account, plan, onStep) };
+  }
   if (plan.next !== "pay" || !recipient) return { bridgeSteps };
 
   onStep("Paying on Arc");
@@ -181,4 +203,59 @@ export async function sendWithBridgeKit(
   });
   await waitForTransactionReceipt(config, { chainId: arc.chainId, hash: payHash });
   return { bridgeSteps, payHash };
+}
+
+type Kit = InstanceType<typeof import("@circle-fin/app-kit").AppKit>;
+type Adapter = Awaited<ReturnType<typeof import("@circle-fin/adapter-viem-v2").createViemAdapterFromProvider>>;
+
+/// One loop on Morpho through Circle Borrow: borrow USDC against the cirBTC, buy more cirBTC on Arc,
+/// and add it to the same loan. Leverage L needs a borrow worth (L - 1) times the collateral.
+async function loop(
+  kit: Kit,
+  adapter: Adapter,
+  account: Address,
+  plan: Plan,
+  onStep: (label: string) => void,
+): Promise<Step[]> {
+  const from = { adapter, chain: "Arc_Testnet" as const };
+  const leverage = Number(plan.leverage);
+
+  const { maxBorrowAmount } = await kit.borrow.getMaxBorrow({
+    chain: "Arc_Testnet",
+    marketId: arc.cirbtcMarket,
+    collateralAmount: plan.amount,
+  });
+  const lltv = 0.86;
+  const borrowAmount = ((Number(maxBorrowAmount.amount) * (leverage - 1)) / lltv).toFixed(6);
+
+  onStep(`Borrowing ${borrowAmount} USDC on Morpho`);
+  const borrowed = await kit.borrow.borrow({ from, marketId: arc.cirbtcMarket, borrowAmount });
+  if (borrowed.status === "submitted") throw new Error("The borrow is still pending in your wallet");
+
+  onStep("Buying cirBTC with it on Arc");
+  const received = await kit.swap({ from, tokenIn: "USDC", tokenOut: "cirBTC", amountIn: borrowAmount });
+
+  onStep("Adding it as collateral");
+  const balance = await readContract(config, {
+    chainId: arc.chainId,
+    address: arc.cirbtc,
+    abi: erc20Abi,
+    functionName: "balanceOf",
+    args: [account],
+  });
+  const added = await kit.borrow.addCollateral({
+    from,
+    loanId: borrowed.loanId,
+    collateralAmount: formatUnits(balance, assets.cirBTC.decimals),
+  });
+
+  const bought = received.amountOut ? formatUnits(BigInt(received.amountOut), assets.cirBTC.decimals) : undefined;
+  return [
+    { name: `Borrowed ${borrowAmount} USDC`, explorerUrl: `${arc.explorer}/tx/${borrowed.txHash}` },
+    { name: bought ? `Bought ${bought} cirBTC` : "Bought cirBTC" },
+    {
+      name: `Collateral added, about ${plan.leverage}x`,
+      explorerUrl: "txHash" in added ? `${arc.explorer}/tx/${added.txHash}` : undefined,
+    },
+  ];
 }

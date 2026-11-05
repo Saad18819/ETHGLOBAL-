@@ -20,6 +20,15 @@ type Run =
 
 const SLIPPAGE = 0.98;
 
+const outcomes: Record<Plan["next"], string> = {
+  pay: "Paid {recipient}",
+  eurc: "Swapped into EURC",
+  keep: "In your wallet on Arc",
+  pool: "Position minted in the USDC/EURC pool",
+  lend: "Lending on Morpho",
+  loop: "Looped",
+};
+
 export function Composer({
   initialPlan = defaultPlan,
   locked = false,
@@ -57,9 +66,15 @@ export function Composer({
       if (usdcNeeded > amount) blocker = `Move at least ${Math.ceil(usdcNeeded * 100) / 100} USDC`;
     }
     if (plan.next === "eurc" && eurcOut) notes.push(`About ${eurcOut.toFixed(2)} EURC at the Uniswap pool price`);
+    if (plan.next === "pool") notes.push("Full-range position in the USDC/EURC v4 pool, minted to you as an NFT");
+    if (plan.next === "lend") notes.push("Deposited into a Morpho USDC vault on Arc, the shares go to you");
     if (invoiceId) notes.push("A receipt goes back to Base and unlocks the invoice");
   } else {
     notes.push(`${plan.asset} is bridged natively with Circle Bridge Kit`);
+    if (plan.next === "loop") {
+      notes.push("Then Circle Borrow on Morpho: borrow USDC, buy cirBTC, add it as collateral");
+      notes.push(`Loan to value after the loop is about ${Math.round(((Number(plan.leverage) - 1) / Number(plan.leverage)) * 100)}%, liquidation at 86%`);
+    }
     if (plan.next === "pay") {
       notes.push("Then paid from your wallet on Arc, tagged with a memo");
       if (payAmount > amount) blocker = `You can pay at most ${plan.amount} ${plan.asset}`;
@@ -75,7 +90,7 @@ export function Composer({
     setRun(undefined);
     try {
       const recipient = plan.next === "pay" ? await resolveRecipient(plan.recipient) : address;
-      const outcome = plan.next === "pay" ? `Paid ${plan.recipient}` : plan.next === "eurc" ? "Swapped into EURC" : "In your wallet on Arc";
+      const outcome = outcomes[plan.next].replace("{recipient}", plan.recipient);
 
       if (viaRouter) {
         const minOut =
@@ -86,7 +101,7 @@ export function Composer({
         );
         setRun({ kind: "router", ...result, outcome });
       } else {
-        const result = await sendWithBridgeKit({ plan, recipient, invoiceId }, setStatus);
+        const result = await sendWithBridgeKit({ plan, account: address, recipient, invoiceId }, setStatus);
         setRun({ kind: "bridgekit", result, outcome });
       }
       setStatus(undefined);
@@ -132,7 +147,7 @@ export function Composer({
           <div className={styles.tracker}>
             <Steps
               steps={[
-                ...run.result.bridgeSteps.map((step) => ({
+                ...[...run.result.bridgeSteps, ...(run.result.loopSteps ?? [])].map((step) => ({
                   label: step.name,
                   state: "done" as const,
                   href: step.explorerUrl,
