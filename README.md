@@ -24,13 +24,16 @@ AndThenRouter                                  AndThenSettlement
                                                  pay exact USDC
                                                  pay exact EURC via the v4 pool
                                                  swap everything into EURC
+                                                 add liquidity to the v4 pool
+                                                 lend on Morpho
 InvoiceBook                                    emit Settled(id, invoiceId, ...)
   ccipReceive: unlock the invoice    ◀───────  CCIP receipt
 ```
 
 - **CCTP moves the money, CCIP moves the instructions and the receipt.** CCIP can not carry value to Arc for us, so all value goes through CCTP. The two arrive in either order; the settlement contract matches them by intent id, which travels as CCTP hook data. The CCTP sender is checked against our router.
 - **Two onchain state changes over CCIP.** The intent changes state on Arc, and the receipt unlocks the invoice on Base.
-- **Uniswap is a destination, not only a source.** The settlement contract swaps through the USDC/EURC v4 pool on Arc to pay an exact EURC amount, or to convert everything into EURC. The router can also swap any token with a v4 pool against USDC on Base before bridging.
+- **Uniswap is a destination, not only a source.** The settlement contract swaps through the USDC/EURC v4 pool on Arc to pay an exact EURC amount or convert everything into EURC, and it can put the funds into that pool: half is swapped into EURC and a full-range position is minted to the user through PositionManager. The router can also swap any token with a v4 pool against USDC on Base before bridging.
+- **Lend and loop on Morpho.** USDC can land straight in a Morpho USDC vault on Arc (one of the vaults Circle Earn lists), with the shares going to the user. cirBTC can be looped: Circle Borrow takes it as collateral on Morpho, the borrowed USDC buys more cirBTC through Circle Swap, and that is added to the same loan.
 - **Bridge Kit for non-USDC assets.** WETH and cirBTC (from Ethereum Sepolia) and EURC (from Base or Ethereum) are bridged natively with Circle Bridge Kit. The "and then" runs from the user's wallet on Arc. Payments go through Arc's `Memo` contract, which only accepts calls from an EOA.
 - **Exact amounts.** Pay actions deliver exactly the requested amount. Whatever is left after the CCTP fee, the swap and the receipt fee goes back to the payer on Arc. If the action can not run, everything is refunded and a failed receipt goes back.
 
@@ -40,7 +43,6 @@ InvoiceBook                                    emit Settled(id, invoiceId, ...)
 - Base to Arc accepts block-depth finality. The router asks for 5 blocks and the settlement contract allows it through `getCCVsAndFinalityConfig`, so the intent does not wait for full finality.
 - Arc to Base fees can not be paid with the USDC ERC20 (`TokenNotSupported`), but native value works. On Arc native value is USDC with 18 decimals, so receipts are paid in native USDC.
 - Arc's `Memo` contract reverts when called by a contract. The settlement contract emits its own `Settled` event with the invoice id instead.
-- USYC needs allowlisting by Circle (24 to 48 hours), so it shows in the panel but is not selectable.
 
 ## Repository
 
