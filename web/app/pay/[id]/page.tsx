@@ -6,6 +6,7 @@ import { formatUnits, isHex, type Hex } from "viem";
 import { readContract } from "wagmi/actions";
 
 import styles from "../pay.module.css";
+import { InvoiceCard } from "../invoice-card";
 import { Composer } from "@/components/Composer";
 import { config } from "@/lib/config";
 import { arc, base, deployed, invoiceAbi } from "@/lib/contracts";
@@ -40,14 +41,21 @@ export default function PayLink({ params }: PageProps<"/pay/[id]">) {
 
   return (
     <main>
-      <p className={styles.memo}>
-        {paidAt > 0n ? "Paid. " : ""}
-        {memo ? `Invoice for ${memo}` : "Invoice"}
-      </p>
       <Composer
         locked
         invoiceId={id as Hex}
         replyTo={deployed.invoices}
+        aside={
+          <InvoiceCard
+            id={id as Hex}
+            memo={memo}
+            amount={formatUnits(amount, 6)}
+            token={payToken}
+            payee={payee}
+            paid={paidAt > 0n}
+            book={deployed.invoices}
+          />
+        }
         initialPlan={{
           ...defaultPlan,
           amount: suggested.toFixed(2),

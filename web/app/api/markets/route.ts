@@ -5,7 +5,7 @@ import { encodeAbiParameters, keccak256, toEventSelector, zeroAddress } from "vi
 import type { Markets } from "@/lib/markets";
 import { poolStats, type PoolSpec } from "@/lib/mainnet";
 import { arc as arcContracts } from "@/lib/contracts";
-import { pools as arcPools } from "@/lib/pools";
+import { pools as arcPools } from "@/lib/pairs";
 import { references } from "@/lib/references";
 import { mainnetTokens, tokens } from "@/lib/tokens";
 

@@ -1,9 +1,10 @@
-import { createPublicClient, http, isAddress, isHex, type Chain } from "viem";
+import { createPublicClient, decodeFunctionData, http, isAddress, isHex, parseEventLogs, type Chain, type Hex } from "viem";
 
 import { sources, type SourceId } from "@/lib/chains";
 import { arcChain, ARC_RPC } from "@/lib/config";
-import { arc } from "@/lib/contracts";
-import { addIntent, aggregate, readIntents, type Intent } from "@/lib/intents";
+import { arc, deployed, routerAbi, settlementAbi } from "@/lib/contracts";
+import { orderKey } from "@/lib/order";
+import { addIntent, aggregate, readIntents, updateStatuses, type Intent } from "@/lib/intents";
 import { tokenBySymbol } from "@/lib/tokens";
 
 const purposes = new Set(["pay", "hold", "pool", "lend", "loop", "back"]);
@@ -33,9 +34,46 @@ async function prices(origin: string): Promise<Record<string, number>> {
   }
 }
 
-/// Aggregated stats over every recorded move.
+const OPEN = 0;
+const SETTLED = 1;
+
+/// Where a move sent through our contracts stands on Arc: the order key is rebuilt from the router call
+/// in the source transaction (the same hash the order tracker uses), then read from the settlement.
+async function settlementStatus(intent: Intent): Promise<Intent["status"] | undefined> {
+  if (intent.chain === "arc" || !deployed.settlement) return undefined;
+  const client = clientFor(intent.chain);
+  const tx = await client.getTransaction({ hash: intent.tx as Hex });
+  const call = decodeFunctionData({ abi: routerAbi, data: tx.input });
+  if (call.functionName !== "send") return undefined;
+  const receipt = await client.getTransactionReceipt({ hash: intent.tx as Hex });
+  const [sent] = parseEventLogs({ abi: routerAbi, eventName: "Sent", logs: receipt.logs });
+  if (!sent) return undefined;
+  const key = orderKey(call.args[0], sent.args.id, tx.from);
+  const order = await clientFor("arc").readContract({
+    address: deployed.settlement,
+    abi: settlementAbi,
+    functionName: "getOrder",
+    args: [key],
+  });
+  if (order.status === OPEN) return undefined;
+  return order.status === SETTLED ? "done" : "refunded";
+}
+
+/// Aggregated stats over every recorded move. Moves still settling are checked against the settlement
+/// contract first, and their outcome is saved.
 export async function GET() {
-  return Response.json(aggregate(await readIntents()));
+  const intents = await readIntents();
+  const settling = intents.filter((intent) => intent.status === "sent");
+  const outcomes = await Promise.all(settling.map((intent) => settlementStatus(intent).catch(() => undefined)));
+  const updates = new Map<string, Intent["status"]>();
+  settling.forEach((intent, i) => {
+    const outcome = outcomes[i];
+    if (outcome) updates.set(intent.tx.toLowerCase(), outcome);
+  });
+  await updateStatuses(updates);
+  return Response.json(
+    aggregate(intents.map((intent) => ({ ...intent, status: updates.get(intent.tx.toLowerCase()) ?? intent.status }))),
+  );
 }
 
 /// Records a move. It is kept only when its transaction exists on the chain it names and was sent by the

@@ -16,9 +16,9 @@ export async function POST(request: Request) {
   if (!isHex(txHash) || !isHex(key) || !Number.isInteger(domain)) {
     return Response.json({ error: "txHash, key and domain required" }, { status: 400 });
   }
-  if (!deployed.settlement || !process.env.RELAYER_PRIVATE_KEY) {
-    return Response.json({ error: "relayer not configured" }, { status: 500 });
-  }
+  if (!deployed.settlement) return Response.json({ error: "settlement not configured" }, { status: 500 });
+  // Without a relayer key the wallet delivers the attestation itself; receiveFunds is open to anyone.
+  if (!process.env.RELAYER_PRIVATE_KEY) return Response.json({ state: "no-relayer" });
 
   const running = inFlight.get(txHash);
   if (running) return (await running).clone();

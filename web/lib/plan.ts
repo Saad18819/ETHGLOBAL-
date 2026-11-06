@@ -142,13 +142,13 @@ export const nextSteps: NextStep[] = [
     id: "hold",
     title: "Hold on Arc",
     body: "Land it as a stablecoin or cirBTC, swapped where the liquidity is, or keep what you moved.",
-    verb: "hold it as",
+    verb: "hold",
   },
   {
     id: "pool",
     title: "Uniswap pool on Arc",
     body: `Provide liquidity to ${pools.map((pool) => pool.id).join(", ")} in the range you pick. The position NFT is yours.`,
-    verb: "add it to the",
+    verb: "add liquidity to the",
   },
   {
     id: "lend",

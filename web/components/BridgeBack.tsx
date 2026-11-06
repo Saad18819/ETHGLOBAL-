@@ -79,7 +79,7 @@ export function BridgeBack() {
     } catch (cause) {
       const message = cause instanceof Error ? cause.message.split("\n")[0] : "The bridge did not go through";
       setError(message);
-      if (!/rejected|denied/i.test(message)) record(address, { purpose: "back", summary, status: "failed", steps: [], error: message });
+
     } finally {
       setStatus(undefined);
       setBusy(false);

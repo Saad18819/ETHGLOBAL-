@@ -2,6 +2,7 @@ import { useCallback, useSyncExternalStore } from "react";
 import type { Address } from "viem";
 
 import { sources, type SourceId } from "./chains";
+import { shortAddress } from "./format";
 import { stepOf, type NextId, type Plan } from "./plan";
 
 /// Past moves from this browser, per wallet: what was moved, what it was for, and how it went. Kept in
@@ -70,9 +71,6 @@ export function useHistory(account: Address | undefined): Entry[] {
     () => empty,
   );
 }
-
-const shortAddress = (value: string) =>
-  /^0x[0-9a-fA-F]{40}$/.test(value) ? `${value.slice(0, 6)}…${value.slice(-4)}` : value;
 
 /// The sentence for a move, in the past tense.
 export function describe(plan: Plan): string {
