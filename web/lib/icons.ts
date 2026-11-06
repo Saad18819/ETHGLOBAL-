@@ -2,7 +2,7 @@ import type { Protocol } from "./brand";
 import type { SourceId } from "./chains";
 
 /// Logos in public/icons. Most come from web3icons (MIT); MORPHO, ENA, ONDO and WETH from Trust Wallet
-/// assets; cbBTC from SmolDapp token assets.
+/// assets; cbBTC from SmolDapp token assets; cirBTC is Circle's own.
 const tokenFiles: Record<string, string> = {
   USDC: "usdc.svg",
   EURC: "eurc.svg",
@@ -14,8 +14,7 @@ const tokenFiles: Record<string, string> = {
   BTC: "btc.svg",
   WBTC: "wbtc.svg",
   cbBTC: "cbbtc.svg",
-  // Circle's BTC on Arc has no logo of its own yet.
-  cirBTC: "btc.svg",
+  cirBTC: "cirbtc.png",
   XAUt: "xaut.svg",
   PAXG: "paxg.svg",
   LINK: "link.svg",
