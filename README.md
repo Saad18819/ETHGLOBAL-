@@ -8,11 +8,43 @@ The whole app is one sentence:
 
 Every part of it is a dropdown. "and then" is fixed. The panel on the side lists what can come next and fills the sentence when you pick one.
 
+## Built in Arc Studio
+
+**Bounty:** Best Use of Bridge Kit for Non-USDC Assets, Built in Arc Studio.
+
+**Arc Studio project:** https://studio.arc.io/app/cb20c8eb-57e8-49eb-abda-1c60be57f23f
+
+- **Settlement, our main Arc contract, was compiled and deployed by Arc Studio.** Studio's workspace has no Chainlink, Uniswap v4 or Permit2 packages, so we flattened `src/AndThenSettlement.sol` into [`studio/AndThenSettlement.flat.sol`](studio/AndThenSettlement.flat.sol) and sent it with the Arc Studio CLI. Studio compiled it (0.8.28, viaIR, optimizer 200, cancun) and deployed it on Arc Testnet. The on-chain runtime is byte-for-byte the size of our local, tested build. Steps and prompt: [`studio/README.md`](studio/README.md).
+- **Arc Studio audited every contract.** Report and fixes: [AUDIT.md](AUDIT.md).
+- **Arc Studio also deployed `HookReceiver`**, the receiver we used to prove EURC with hook data lands in an Arc contract (CCTP for non-USDC assets).
+- **Bridge Kit for non-USDC assets:** EURC, WETH and cirBTC are bridged with Circle Bridge Kit and finished on Arc (see "How it works").
+
+## Deployed contracts (testnet)
+
+| Chain | Contract | Address | Deployed with |
+|---|---|---|---|
+| Arc Testnet | AndThenSettlement | [`0xddc5b10c8e8001d5bd385025ad9dfc6a56d38bb3`](https://explorer.testnet.arc.io/address/0xddc5b10c8e8001d5bd385025ad9dfc6a56d38bb3) | **Arc Studio** |
+| Arc Testnet | HookReceiver (EURC hook test) | [`0x86f5d77bDb889Ec3B4550049fCbF79265Ede5012`](https://explorer.testnet.arc.io/address/0x86f5d77bDb889Ec3B4550049fCbF79265Ede5012) | **Arc Studio** |
+| Ethereum Sepolia | AndThenRouter | [`0x29C7119964c2aa6cB66Ade33D73832c9c7da6c3f`](https://sepolia.etherscan.io/address/0x29C7119964c2aa6cB66Ade33D73832c9c7da6c3f) | `forge script` (DeploySource) |
+| Ethereum Sepolia | InvoiceBook | [`0x1e1d833F54E6a4bDC225Be7077f123eb467447BB`](https://sepolia.etherscan.io/address/0x1e1d833F54E6a4bDC225Be7077f123eb467447BB) | `forge script` (DeploySource) |
+
+Settlement is set up with the Morpho USDC vault, the USDC/EURC v4 pool and the Sepolia router (`setVault`, `setPool`, `setSource`). Every other address we use (CCTP, CCIP, Uniswap v4, tokens) is in [ADDRESSES.md](ADDRESSES.md).
+
+### Rails we proved on testnet first
+
+| Rail | Result | Script |
+|---|---|---|
+| EURC Sepolia → Arc with hook data (CCTP for non-USDC) | landed in `HookReceiver`, hook data decoded, ~16 min at standard finality | [`scripts/eurc-hook`](scripts/eurc-hook/README.md) |
+| CCIP message Arc → Sepolia, fee in native USDC | delivered in **17 s** | `scripts/ccip-hello` |
+| Uniswap v4 swap on Arc's USDC/EURC pool | 1 USDC → 0.851 EURC | `scripts/uniswap-swap` |
+
 ## Main use case: pay links
 
 A merchant requests 25 EURC on Arc and gets a link. The payer opens it, pays from Base, and the merchant receives exactly 25 EURC on Arc, tagged with the invoice id. The invoice on Base only unlocks when a receipt from Arc arrives.
 
 ## How it works
+
+![andthen architecture](assets/architecture.svg)
 
 ```
 Base Sepolia                                   Arc testnet
@@ -58,6 +90,12 @@ InvoiceBook                                    emit Settled(id, invoiceId, ...)
 | `src/UniswapV4Swapper.sol` | Exact-in and exact-out swaps straight against the v4 PoolManager |
 | `test/AndThen.t.sol` | Full flow against a real v4 PoolManager with CCTP and CCIP mocks |
 | `script/Deploy.s.sol` | Deploy and wire up on Arc testnet and Base Sepolia |
+| `src/HookReceiver.sol` | Arc. Test receiver for EURC with hook data (`executeWithCrossChainToken`), deployed in Arc Studio |
+| `studio/` | Flattened Settlement for Arc Studio, the deploy prompt, and how to redeploy |
+| `scripts/settlement-setup` | Owner setup after the Studio deploy (`setVault`, `setPool`) |
+| `scripts/eurc-hook`, `scripts/ccip-hello`, `scripts/uniswap-swap` | The rail tests: EURC hook, CCIP Arc → Sepolia, v4 swap on Arc |
+| `deployments/`, `ADDRESSES.md`, `broadcast/` | Every deployed and external address, and the forge deploy logs |
+| `assets/architecture.svg` | Architecture diagram |
 | `web/` | Next.js app: the sentence, pay links, and the CCTP relayer route |
 
 ## Run it
