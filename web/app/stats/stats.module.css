@@ -57,12 +57,12 @@
 
 .cards {
   display: grid;
-  grid-template-columns: repeat(3, minmax(0, 1fr));
-  gap: 12px;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 16px;
 }
 
 .card {
-  padding: 14px 16px 16px;
+  padding: 18px 20px 20px;
   border: 1px solid var(--line);
   border-radius: var(--radius);
   background: var(--surface);
@@ -70,21 +70,24 @@
 
 .cardTitle {
   margin: 0 0 10px;
-  font-size: 14px;
+  font-size: 15px;
   font-weight: 600;
 }
 
+/* The chart takes three quarters of the card, the legend the rest. */
 .cardBody {
   display: grid;
-  grid-template-columns: 92px minmax(0, 1fr);
-  gap: 14px;
+  grid-template-columns: 3fr 1fr;
+  gap: 20px;
   align-items: center;
 }
 
 .ring {
   display: block;
-  width: 92px;
-  height: 92px;
+  width: 100%;
+  max-width: 340px;
+  aspect-ratio: 1;
+  margin: 0 auto;
   overflow: visible;
 }
 
@@ -101,14 +104,14 @@
 
 .centerValue {
   fill: var(--ink);
-  font-size: 14px;
+  font-size: 13px;
   font-weight: 600;
   font-variant-numeric: tabular-nums;
 }
 
 .centerLabel {
   fill: var(--muted);
-  font-size: 9px;
+  font-size: 7px;
 }
 
 .legend {
@@ -117,15 +120,18 @@
   margin: 0;
   padding: 0;
   list-style: none;
-  font-size: 13px;
+  font-size: 15px;
 }
 
 .legend li {
   display: grid;
-  grid-template-columns: 10px minmax(0, 1fr) auto;
-  gap: 8px;
-  align-items: center;
-  padding: 3px 6px;
+  grid-template-columns: 10px minmax(0, 1fr);
+  grid-template-areas:
+    "swatch label"
+    ". value";
+  column-gap: 8px;
+  align-items: start;
+  padding: 5px 6px;
   border-radius: 6px;
 }
 
@@ -134,18 +140,22 @@
 }
 
 .swatch {
+  grid-area: swatch;
+  margin-top: 4px;
   width: 10px;
   height: 10px;
   border-radius: 3px;
 }
 
 .legendLabel {
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
+  grid-area: label;
+  line-height: 1.25;
 }
 
 .legendValue {
+  grid-area: value;
+  color: var(--muted);
+  font-size: 13px;
   font-variant-numeric: tabular-nums;
 }
 
@@ -224,7 +234,7 @@
   color: var(--faint);
 }
 
-@media (max-width: 960px) {
+@media (max-width: 860px) {
   .cards {
     grid-template-columns: 1fr;
   }
