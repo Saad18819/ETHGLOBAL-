@@ -146,6 +146,7 @@ export function Field({
   hint,
   presets,
   swatch,
+  maxChars,
 }: {
   value: string;
   onChange: (value: string) => void;
@@ -157,6 +158,8 @@ export function Field({
   /// Quick values shown under the hint, such as half or all of a balance.
   presets?: { label: string; value: string }[];
   swatch?: Swatch;
+  /// Caps the width for long values such as hashes, which then show truncated.
+  maxChars?: number;
 }) {
   return (
     <span
@@ -164,7 +167,10 @@ export function Field({
       style={swatch && swatchStyle(swatch)}
     >
       {/* The hidden copy of the text sizes the input to exactly what is typed. */}
-      <span className={styles.sizer} data-value={(value || placeholder || "").padEnd(numeric ? 1 : 4, " ")}>
+      <span
+        className={`${styles.sizer} ${maxChars ? styles.capped : ""}`}
+        style={maxChars ? { maxWidth: `${maxChars}ch` } : undefined}
+        data-value={(value || placeholder || "").padEnd(numeric ? 1 : 4, " ")}>
         <input
           aria-label={label}
           value={value}

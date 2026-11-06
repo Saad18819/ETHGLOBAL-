@@ -20,6 +20,7 @@ export function Header() {
       <nav className={styles.nav}>
         <Link href="/">Move</Link>
         <Link href="/invoice">Request a payment</Link>
+        <Link href="/finish">Finish a transfer</Link>
       </nav>
       {isTestnet && (
         <span className={styles.network} title="Rates, APYs and volumes are read live from Arc mainnet. Every transaction runs on testnet, with test funds.">

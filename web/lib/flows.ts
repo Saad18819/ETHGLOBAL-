@@ -17,6 +17,7 @@ import {
 } from "viem";
 import { normalize } from "viem/ens";
 import {
+  getBalance,
   getEnsAddress,
   readContract,
   switchChain,
@@ -206,6 +207,16 @@ const arcToken = (asset: AssetId): Address => {
 /// Circle's kits name wrapped ether wETH; every other asset goes by its symbol.
 const kitToken = (asset: AssetId) => (asset === "WETH" || asset === "ETH" ? "wETH" : asset);
 
+/// A transfer burned on the source chain whose mint on Arc did not go through; it can be finished later.
+export class StuckTransfer extends Error {
+  constructor(
+    readonly from: SourceId,
+    readonly txHash: string,
+  ) {
+    super("The transfer left the source chain but was not minted on Arc yet");
+  }
+}
+
 /// Wraps native ETH into WETH on the source chain, so Circle can bridge it.
 export async function wrapEth(from: SourceId, amount: bigint, onStep: (label: string) => void) {
   const weth = tokenBySymbol.WETH?.sources[from];
@@ -252,11 +263,18 @@ export async function sendThroughWallet(context: Context, onStep: (label: string
 
   const asset = plan.asset;
   const before = await arcBalance(arcToken(asset), account);
+  // Circle's forwarder mints USDC on Arc, so the wallet needs no gas there. Other assets are minted by the
+  // wallet itself, so check for gas before anything is burned.
+  const forwarded = asset === "USDC";
+  if (!forwarded) {
+    const gas = await getBalance(config, { address: account, chainId: arc.chainId });
+    if (gas.value === 0n) throw new Error("Your wallet needs a little USDC on Arc for gas to receive " + asset);
+  }
 
   onStep(`Bridging ${asset} from ${sources[plan.from].label} with Bridge Kit`);
   let bridged = await kit.bridge({
     from: { adapter, chain: sources[plan.from].kitChain as never },
-    to: { adapter, chain: arc.kitChain as never },
+    to: { adapter, chain: arc.kitChain as never, useForwarder: forwarded },
     amount: plan.amount,
     token: kitToken(asset) as never,
     config: { transferSpeed: plan.speed === "fast" ? "FAST" : "SLOW" },
@@ -265,7 +283,11 @@ export async function sendThroughWallet(context: Context, onStep: (label: string
     onStep("Retrying the mint on Arc");
     bridged = await kit.retryBridge(bridged, { from: adapter, to: adapter });
   }
-  if (bridged.state === "error") throw new Error("Bridge Kit could not finish the transfer");
+  if (bridged.state === "error") {
+    const burn = bridged.steps.find((step) => /burn/i.test(step.name) && step.txHash);
+    if (burn?.txHash) throw new StuckTransfer(plan.from, burn.txHash);
+    throw new Error("Bridge Kit could not finish the transfer");
+  }
   for (const step of bridged.steps) {
     steps.push({ name: step.name, explorerUrl: "explorerUrl" in step ? (step.explorerUrl as string) : undefined });
   }
