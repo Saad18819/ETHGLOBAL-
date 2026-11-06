@@ -73,6 +73,8 @@ export type Context = {
   poolTick?: number;
   /// EURC per USDC on the pool, for price limits.
   rate?: number;
+  /// USDC the pool takes for the exact EURC payment, from the Quoter.
+  eurcCost?: number;
   invoiceId?: Hex;
   replyTo?: Address;
   /// USDC/EURC pool state on Arc, for wallet-side liquidity.
@@ -81,10 +83,14 @@ export type Context = {
 };
 
 const none = { limit: 0n, data: "0x" as Hex };
+
+/// Room over the quoted cost of an exact EURC payment on Arc. The pool is thin and other moves shift its
+/// price in the minutes before the payment settles; whatever is not spent comes back to the payer.
+export const EURC_PAY_MARGIN = 1.03;
 const units = (value: number) => BigInt(Math.floor(value * 1e6));
 
 /// What the settlement contract on Arc does once the USDC is there, with the price bounds it enforces.
-export function settlementAction({ plan, recipient, minOut = 0n, poolTick = 0, rate }: Context) {
+export function settlementAction({ plan, recipient, minOut = 0n, poolTick = 0, rate, eurcCost }: Context) {
   const keep = 1 - Number(plan.slippage) / 100;
   switch (plan.next) {
     case "pay": {
@@ -92,9 +98,10 @@ export function settlementAction({ plan, recipient, minOut = 0n, poolTick = 0, r
       if (plan.payToken !== "EURC") {
         return { ...none, action: Action.Pay, recipient, token: arc.usdc, amount: units(amount) };
       }
-      if (!rate) throw new Error("Pool price is not loaded yet");
-      // The most USDC the exact EURC payment may cost.
-      return { ...none, action: Action.Pay, recipient, token: arc.eurc, amount: units(amount), limit: units(amount / rate / keep) + 1n };
+      if (!eurcCost) throw new Error("The EURC price on Arc is not loaded yet");
+      // The most USDC the exact EURC payment may cost: the quoted cost with room for the price to move.
+      const limit = units((eurcCost * EURC_PAY_MARGIN) / keep) + 1n;
+      return { ...none, action: Action.Pay, recipient, token: arc.eurc, amount: units(amount), limit };
     }
     case "hold":
       // USDC lands as it is; EURC is bought on the Uniswap pool with a minimum out.

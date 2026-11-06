@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { readContract, switchChain, waitForTransactionReceipt, writeContract } from "wagmi/actions";
 import type { Hex } from "viem";
@@ -76,6 +76,16 @@ export function RouterTracker({
   const [delivered, setDelivered] = useState<Hex>();
   const [deliverError, setDeliverError] = useState<string>();
 
+  // Without a relayer the wallet delivers as soon as Circle attests, with no extra click.
+  const ready = selfDeliver && attestation.data?.state === "attested";
+  const tried = useRef(false);
+  useEffect(() => {
+    if (!ready || tried.current) return;
+    tried.current = true;
+    void deliver();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [ready]);
+
   async function deliver() {
     const ready = attestation.data;
     if (!ready?.message || !ready.attestation) return;
@@ -137,7 +147,9 @@ export function RouterTracker({
         relay.data?.error ??
         (selfDeliver
           ? attestation.data?.state === "attested"
-            ? "Attested by Circle, ready for your wallet to deliver"
+            ? delivering
+              ? "Confirm the delivery on Arc in your wallet"
+              : "Attested by Circle, delivered from your wallet"
             : "Waiting for Circle to attest the burn"
           : "Minted by Circle CCTP"),
       state: funded ? "done" : "active",
@@ -161,9 +173,10 @@ export function RouterTracker({
   return (
     <>
       <Steps steps={steps} />
-      {selfDeliver && attestation.data?.state === "attested" && !delivered && (
+      {/* Only shown when the automatic delivery did not go through, to try it again. */}
+      {deliverError && !delivered && (
         <button className={styles.deliver} disabled={delivering} onClick={deliver}>
-          {delivering ? "Delivering" : "Deliver on Arc"}
+          {delivering ? "Delivering" : "Try delivering again"}
         </button>
       )}
       {deliverError && <p className={styles.error}>{deliverError}</p>}

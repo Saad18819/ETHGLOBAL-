@@ -39,6 +39,44 @@ export function usePool() {
   return useQuery({ queryKey: ["eurc-pool"], queryFn: readPool, refetchInterval: 30_000 });
 }
 
+/// Uniswap's v4 Quoter on Arc, the same address on testnet and mainnet.
+const quoter = "0x8Dc178eFB8111BB0973Dd9d722ebeFF267c98F94";
+const quoterAbi = parseAbi([
+  "function quoteExactOutputSingle(((address,address,uint24,int24,address) poolKey, bool zeroForOne, uint128 exactAmount, bytes hookData) params) view returns (uint256 amountIn, uint256 gasEstimate)",
+]);
+
+/// USDC the pool takes for exactly `eurc` out, quoted by simulating the swap: fee and price impact
+/// across every tick included.
+export async function usdcForEurc(eurc: bigint): Promise<bigint> {
+  const [amountIn] = await readContract(config, {
+    chainId: arc.chainId,
+    address: quoter,
+    abi: quoterAbi,
+    functionName: "quoteExactOutputSingle",
+    args: [
+      {
+        poolKey: [arc.usdc, arc.eurc, eurcPool.fee, eurcPool.tickSpacing, zeroAddress],
+        zeroForOne: true,
+        exactAmount: eurc,
+        hookData: "0x",
+      },
+    ],
+  });
+  return amountIn;
+}
+
+/// What an exact EURC payment costs in USDC on the pool, kept fresh while the user looks at it.
+export function useEurcCost(eurc: string, enabled: boolean) {
+  const amount = Number(eurc) > 0 ? BigInt(Math.round(Number(eurc) * 1e6)) : 0n;
+  return useQuery({
+    queryKey: ["eurc-cost", amount.toString()],
+    queryFn: async () => Number(await usdcForEurc(amount)) / 1e6,
+    enabled: enabled && amount > 0n,
+    refetchInterval: 15_000,
+    retry: false,
+  });
+}
+
 /// EURC per USDC from the pool's spot price.
 export function useEurcRate() {
   const pool = usePool();
