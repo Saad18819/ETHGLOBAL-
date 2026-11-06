@@ -2,8 +2,10 @@
 
 import { useState } from "react";
 import { useQuery } from "@tanstack/react-query";
-import { parseUnits, type Address, type Hex } from "viem";
+import { formatUnits, parseEther, parseUnits, type Address, type Hex } from "viem";
 import { useConnect, useConnection } from "wagmi";
+import { switchChain } from "wagmi/actions";
+import { sepolia } from "wagmi/chains";
 import { injected } from "wagmi/connectors";
 
 import styles from "./Composer.module.css";
@@ -16,8 +18,12 @@ import { sources } from "@/lib/chains";
 import { arc } from "@/lib/contracts";
 import { cctpFees, resolveRecipient, sendThroughRouter, sendThroughWallet, type RouterResult } from "@/lib/flows";
 import { MAX_LEVERAGE } from "@/lib/loop";
+import { useBalances } from "@/lib/balances";
+import { protocolOf, protocols, swatchStyle } from "@/lib/brand";
 import { useMarkets } from "@/lib/markets";
-import { defaultPlan, normalizePlan, routeOf, type NextId, type Plan } from "@/lib/plan";
+import { config } from "@/lib/config";
+import { defaultPlan, normalizePlan, routeOf, viaUniswap, type NextId, type Plan } from "@/lib/plan";
+import { quoteEthToUsdc, swapEthToUsdc } from "@/lib/uniswap";
 import { usePool } from "@/lib/quote";
 
 type Run =
@@ -44,7 +50,13 @@ export function Composer({
   invoiceId?: Hex;
   replyTo?: Address;
 }) {
-  const [draft, setPlan] = useState(initialPlan);
+  const [draft, setDraft] = useState(initialPlan);
+  // Until the user edits the sentence, it follows their largest holding.
+  const [touched, setTouched] = useState(locked);
+  const setPlan = (next: Plan) => {
+    setTouched(true);
+    setDraft(next);
+  };
   const [status, setStatus] = useState<string>();
   const [error, setError] = useState<string>();
   const [busy, setBusy] = useState(false);
@@ -53,22 +65,47 @@ export function Composer({
   const { address, isConnected } = useConnection();
   const connect = useConnect();
   const markets = useMarkets();
+  const balances = useBalances(address, markets.data?.prices);
+  const top = balances.data?.[0];
   const pool = usePool();
   // The settlement contract only deposits into vaults it allowlists; Circle Earn can reach all of them.
+  const base =
+    !touched && top
+      ? normalizePlan({ ...draft, asset: top.asset, from: top.from, amount: spendable(top.asset, top.amount) })
+      : draft;
   const vaults = (markets.data?.vaults ?? []).filter(
-    (vault) => routeOf(draft) !== "router" || vault.address.toLowerCase() === arc.morphoVault.toLowerCase(),
+    (vault) => routeOf(base) !== "router" || vault.address.toLowerCase() === arc.morphoVault.toLowerCase(),
   );
-  const vault = vaults.some((v) => v.address === draft.vault) ? draft.vault : (vaults[0]?.address ?? "");
-  const plan = { ...draft, vault };
+  const vault = vaults.some((v) => v.address === base.vault) ? base.vault : (vaults[0]?.address ?? "");
+  const plan = { ...base, vault };
   const lltv = markets.data?.markets.find((m) => m.collateral === "cirBTC")?.lltv;
   const domain = sources[plan.from].cctpDomain;
   const fees = useQuery({ queryKey: ["cctp-fee", domain], queryFn: () => cctpFees(domain), staleTime: 60_000 });
 
+  const uniswap = viaUniswap(plan);
+  const sourceQuote = useQuery({
+    queryKey: ["eth-quote", plan.amount, markets.data?.prices.ETH],
+    queryFn: () => quoteEthToUsdc(parseEther(plan.amount || "0"), markets.data?.prices.ETH),
+    enabled: uniswap && Number(plan.amount) > 0 && Boolean(markets.data),
+    staleTime: 30_000,
+  });
   const route = routeOf(plan);
-  const amount = Number(plan.amount) || 0;
+  // What arrives as USDC when the source leg goes through Uniswap.
+  const amount = uniswap
+    ? Number(formatUnits(sourceQuote.data?.amountOut ?? 0n, 6))
+    : Number(plan.amount) || 0;
   const slippage = 1 - Number(plan.slippage) / 100;
-  const swaps = plan.next === "hold" || plan.next === "loop" || (plan.next === "pay" && plan.payToken === "EURC");
-  const blocker = findBlocker(plan, route, amount, pool.data?.rate, slippage);
+  const swaps =
+    uniswap ||
+    plan.next === "hold" ||
+    plan.next === "loop" ||
+    plan.next === "pool" ||
+    plan.next === "lend" ||
+    (plan.next === "pay" && plan.payToken !== plan.asset);
+  const blocker =
+    uniswap && sourceQuote.isFetched && !sourceQuote.data
+      ? "No Uniswap route from ETH to USDC on Ethereum right now"
+      : findBlocker(plan, route, amount, pool.data?.rate, slippage);
 
   async function go() {
     if (!address) return;
@@ -78,20 +115,36 @@ export function Composer({
     try {
       const recipient =
         plan.next === "pay" ? await resolveRecipient(plan.recipient) : plan.to ? await resolveRecipient(plan.to) : address;
+      let effective = plan;
+      if (uniswap) {
+        await switchChain(config, { chainId: sepolia.id });
+        const amountIn = parseEther(plan.amount);
+        const quote = await quoteEthToUsdc(amountIn, markets.data?.prices.ETH);
+        if (!quote) throw new Error("No Uniswap route from ETH to USDC right now");
+        const { usdc } = await swapEthToUsdc(
+          { account: address, amountIn, quote, slippage: Number(plan.slippage) / 100, fromWeth: plan.asset === "WETH" },
+          setStatus,
+        );
+        effective = { ...plan, asset: "USDC", amount: formatUnits(usdc, 6) };
+      }
+      const effectiveAmount = Number(effective.amount);
+
       const context = {
-        plan,
+        plan: effective,
         account: address,
         recipient,
         invoiceId,
         replyTo,
         poolTick: pool.data?.tick,
+        rate: pool.data?.rate,
+        pool: pool.data && { tick: pool.data.tick, sqrtPrice: pool.data.sqrtPrice },
         minOut:
           plan.next === "hold" && pool.data
-            ? parseUnits((amount * pool.data.rate * slippage).toFixed(6), 6)
+            ? parseUnits((effectiveAmount * pool.data.rate * slippage).toFixed(6), 6)
             : undefined,
       };
 
-      if (route === "router") {
+      if (routeOf(effective) === "router") {
         const result = await sendThroughRouter(context, setStatus);
         setRun({ kind: "router", outcome: outcomes[plan.next].replace("{recipient}", plan.recipient), ...result });
       } else {
@@ -112,7 +165,14 @@ export function Composer({
   return (
     <div className={styles.layout}>
       <section className={styles.main}>
-        <Sentence plan={plan} onChange={setPlan} vaults={vaults} lltv={lltv} locked={locked} />
+        <Sentence
+          plan={plan}
+          onChange={setPlan}
+          vaults={vaults}
+          lltv={lltv}
+          holdings={balances.data}
+          locked={locked}
+        />
 
         <Options plan={plan} onChange={setPlan} swaps={swaps} forwards={forwards(plan, route)} />
         <Details
@@ -120,11 +180,17 @@ export function Composer({
           markets={markets.data && { ...markets.data, vaults }}
           pool={pool.data}
           fees={fees.data}
+          sourceQuote={uniswap ? sourceQuote.data : undefined}
         />
 
         <div className={styles.actions}>
           {isConnected ? (
-            <button className={styles.primary} disabled={busy || Boolean(blocker)} onClick={go}>
+            <button
+              className={styles.primary}
+              style={swatchStyle(protocols[protocolOf[plan.next]])}
+              disabled={busy || Boolean(blocker)}
+              onClick={go}
+            >
               {busy ? "Working" : "Move it"}
             </button>
           ) : (
@@ -143,7 +209,7 @@ export function Composer({
         {run?.kind === "router" && (
           <div className={styles.tracker}>
             <RouterTracker
-              id={run.id}
+              orderKey={run.key}
               txHash={run.txHash}
               explorer={run.explorer}
               source={sources[plan.from].label}
@@ -174,6 +240,14 @@ export function Composer({
   );
 }
 
+/// A round amount to move from a balance, keeping some native ETH for gas.
+function spendable(asset: Plan["asset"], amount: string) {
+  const value = Number(amount) * (asset === "ETH" ? 0.9 : 1);
+  const digits = asset === "cirBTC" ? 6 : asset === "ETH" || asset === "WETH" ? 4 : 2;
+  const factor = 10 ** digits;
+  return String(Math.floor(value * factor) / factor);
+}
+
 /// Whether the result can be sent to someone other than the connected wallet.
 function forwards(plan: Plan, route: ReturnType<typeof routeOf>) {
   if (plan.next === "hold" || plan.next === "keep") return true;
@@ -189,14 +263,12 @@ function findBlocker(
 ): string | undefined {
   if (!amount) return "Enter an amount";
   if (!route) return `Not available from ${sources[plan.from].label}`;
-  if (route === "router" && !sources[plan.from].router?.address) {
-    return `andthen is not deployed on ${sources[plan.from].label} yet`;
-  }
   if (plan.next === "pay") {
     if (!plan.recipient) return "Who should get paid?";
     const pay = Number(plan.payAmount) || 0;
     if (route === "wallet" && pay > amount) return `You can pay at most ${plan.amount} ${plan.asset}`;
-    const needed = route === "router" && plan.payToken === "EURC" && rate ? pay / rate / slippage : pay;
+    // The CCTP fast fee (up to a few basis points) comes off what arrives, so ask for a little more.
+    const needed = (route === "router" && plan.payToken === "EURC" && rate ? pay / rate / slippage : pay) / 0.9995;
     if (route === "router" && needed > amount) return `Move at least ${Math.ceil(needed * 100) / 100} USDC`;
   }
   if (plan.next === "loop") {

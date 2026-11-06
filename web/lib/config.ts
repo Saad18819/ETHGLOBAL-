@@ -4,16 +4,11 @@ import {
   arcTestnet,
   avalancheFuji,
   baseSepolia,
-  inkSepolia,
-  lineaSepolia,
   mainnet,
-  monadTestnet,
   optimismSepolia,
   polygonAmoy,
   sepolia,
-  sonicTestnet,
   unichainSepolia,
-  worldchainSepolia,
 } from "wagmi/chains";
 import { injected } from "wagmi/connectors";
 
@@ -28,11 +23,6 @@ const chains = [
   optimismSepolia,
   avalancheFuji,
   unichainSepolia,
-  lineaSepolia,
-  worldchainSepolia,
-  inkSepolia,
-  sonicTestnet,
-  monadTestnet,
   mainnet,
 ] as const;
 
@@ -50,11 +40,6 @@ export function getConfig() {
       [optimismSepolia.id]: http(),
       [avalancheFuji.id]: http(),
       [unichainSepolia.id]: http(),
-      [lineaSepolia.id]: http(),
-      [worldchainSepolia.id]: http(),
-      [inkSepolia.id]: http(),
-      [sonicTestnet.id]: http(),
-      [monadTestnet.id]: http(),
       [mainnet.id]: http(),
     },
   });

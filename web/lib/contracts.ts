@@ -37,7 +37,7 @@ export const ethereum = {
 } as const;
 
 const intent =
-  "(bytes32 id, address payer, uint8 action, address recipient, address token, uint256 amount, bytes32 invoiceId, address replyTo, bytes data)";
+  "(bytes32 id, address payer, uint8 action, address recipient, address token, uint256 amount, uint256 limit, uint64 deadline, address refundTo, bytes32 invoiceId, address replyTo, bytes data)";
 
 export const routerAbi = parseAbi([
   `function send(${intent} intent, uint256 amount, uint256 maxFee, uint32 cctpFinality) payable returns (bytes32)`,
@@ -46,9 +46,9 @@ export const routerAbi = parseAbi([
 ]);
 
 export const settlementAbi = parseAbi([
-  `function getOrder(bytes32 id) view returns ((${intent} intent, uint64 sourceChain, uint256 funded, uint8 status))`,
+  `function getOrder(bytes32 key) view returns ((${intent} intent, bool hasIntent, bool receiptSent, uint8 status, uint64 sourceChain, uint64 fundedAt, uint256 funded, uint256 delivered))`,
   "function receiveFunds(bytes message, bytes attestation)",
-  "event Settled(bytes32 indexed id, bytes32 indexed invoiceId, address payer, address indexed recipient, address token, uint256 amount)",
+  "event Settled(bytes32 indexed key, bytes32 indexed invoiceId, address payer, address indexed recipient, address token, uint256 amount)",
 ]);
 
 export const invoiceAbi = parseAbi([

@@ -3,8 +3,9 @@
 import { useEffect, useId, useRef, useState, type ReactNode } from "react";
 
 import styles from "./Pill.module.css";
+import { swatchStyle, type Swatch } from "@/lib/brand";
 
-type Tone = "violet" | "green" | "sand";
+type Tone = "violet" | "green" | "sand" | "stone";
 
 export type Option<T extends string> = {
   value: T;
@@ -13,12 +14,17 @@ export type Option<T extends string> = {
   disabled?: boolean;
 };
 
+/// A free numeric value next to the presets, clamped to [min, max].
+export type Custom = { min: number; max: number; suffix: string; placeholder?: string };
+
 export function Select<T extends string>({
   value,
   options,
   onChange,
   tone = "violet",
   label,
+  custom,
+  swatch,
   children,
 }: {
   value: T;
@@ -26,6 +32,9 @@ export function Select<T extends string>({
   onChange: (value: T) => void;
   tone?: Tone;
   label: string;
+  custom?: Custom;
+  /// Overrides the tone with a token or protocol color.
+  swatch?: Swatch;
   children?: ReactNode;
 }) {
   const [open, setOpen] = useState(false);
@@ -51,7 +60,8 @@ export function Select<T extends string>({
     <span className={styles.anchor} ref={ref}>
       <button
         type="button"
-        className={`${styles.pill} ${styles[tone]}`}
+        className={`${styles.pill} ${swatch ? styles.swatch : styles[tone]}`}
+        style={swatch && swatchStyle(swatch)}
         aria-haspopup="listbox"
         aria-expanded={open}
         aria-controls={listId}
@@ -81,9 +91,48 @@ export function Select<T extends string>({
               </button>
             </li>
           ))}
+          {custom && (
+            <li>
+              <CustomValue
+                custom={custom}
+                onSubmit={(next) => {
+                  onChange(next as T);
+                  setOpen(false);
+                }}
+              />
+            </li>
+          )}
         </ul>
       )}
     </span>
+  );
+}
+
+function CustomValue({ custom, onSubmit }: { custom: Custom; onSubmit: (value: string) => void }) {
+  const [text, setText] = useState("");
+  const submit = () => {
+    const number = Number(text);
+    if (!text || !Number.isFinite(number)) return;
+    onSubmit(String(Math.min(custom.max, Math.max(custom.min, number))));
+  };
+  return (
+    <form
+      className={styles.custom}
+      onSubmit={(event) => {
+        event.preventDefault();
+        submit();
+      }}
+    >
+      <input
+        aria-label="Custom value"
+        inputMode="decimal"
+        placeholder={custom.placeholder ?? "Custom"}
+        value={text}
+        onChange={(event) => /^\d*\.?\d*$/.test(event.target.value) && setText(event.target.value)}
+      />
+      <span>{custom.suffix}</span>
+      <button type="submit">Set</button>
+    </form>
   );
 }
 
@@ -95,7 +144,7 @@ export function Field({
   label,
   numeric,
   hint,
-  warn,
+  swatch,
 }: {
   value: string;
   onChange: (value: string) => void;
@@ -104,11 +153,14 @@ export function Field({
   label: string;
   numeric?: boolean;
   hint?: string;
-  warn?: boolean;
+  swatch?: Swatch;
 }) {
   const width = Math.max((value || placeholder || "").length, numeric ? 1 : 4);
   return (
-    <span className={`${styles.pill} ${styles[tone]} ${styles.field}`}>
+    <span
+      className={`${styles.pill} ${swatch ? styles.swatch : styles[tone]} ${styles.field}`}
+      style={swatch && swatchStyle(swatch)}
+    >
       <input
         aria-label={label}
         value={value}
@@ -123,13 +175,20 @@ export function Field({
           onChange(next);
         }}
       />
-      {hint && <span className={`${styles.badge} ${warn ? styles.warn : ""}`}>{hint}</span>}
+      {hint && <span className={styles.badge}>{hint}</span>}
     </span>
   );
 }
 
-export function Fixed({ children, tone = "violet" }: { children: ReactNode; tone?: Tone }) {
-  return <span className={`${styles.pill} ${styles[tone]} ${styles.fixed}`}>{children}</span>;
+export function Fixed({ children, tone = "violet", swatch }: { children: ReactNode; tone?: Tone; swatch?: Swatch }) {
+  return (
+    <span
+      className={`${styles.pill} ${swatch ? styles.swatch : styles[tone]} ${styles.fixed}`}
+      style={swatch && swatchStyle(swatch)}
+    >
+      {children}
+    </span>
+  );
 }
 
 function Chevron() {

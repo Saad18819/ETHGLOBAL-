@@ -38,6 +38,19 @@ button.pill:hover {
   color: var(--sand-ink);
 }
 
+.swatch {
+  background: var(--pill-bg);
+  color: var(--pill-ink);
+  transition:
+    background 160ms ease,
+    color 160ms ease;
+}
+
+.stone {
+  background: #efeeea;
+  color: #34323a;
+}
+
 .fixed {
   cursor: default;
 }
@@ -79,11 +92,6 @@ button.pill:hover {
   background: color-mix(in srgb, currentColor 12%, transparent);
   align-self: center;
   margin-left: 0.3em;
-}
-
-.warn {
-  background: var(--warn-bg);
-  color: var(--warn-ink);
 }
 
 .menu {
@@ -130,4 +138,35 @@ button.pill:hover {
 .optionHint {
   font-size: 12px;
   color: var(--muted);
+}
+
+.custom {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin-top: 4px;
+  padding: 8px 6px 4px 10px;
+  border-top: 1px solid var(--line);
+  color: var(--muted);
+  font-size: 14px;
+}
+
+.custom input {
+  flex: 1;
+  min-width: 0;
+  padding: 6px 8px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: var(--bg);
+  outline: none;
+  color: var(--ink);
+}
+
+.custom button {
+  padding: 6px 12px;
+  border: none;
+  border-radius: 8px;
+  background: var(--ink);
+  color: var(--bg);
+  font-size: 13px;
 }

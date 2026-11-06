@@ -40,7 +40,8 @@
   padding: 13px 26px;
   border: none;
   border-radius: 999px;
-  background: var(--ink);
+  background: var(--pill-accent, var(--ink));
+  transition: background 160ms ease;
   color: var(--bg);
   font-size: 15px;
   font-weight: 500;

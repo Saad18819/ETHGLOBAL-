@@ -31,7 +31,7 @@ async function readPool() {
   // Amounts the in-range liquidity is worth at the current price, both tokens with 6 decimals.
   const usdcDepth = Number(liquidity) / sqrtPrice / 1e6;
   const eurcDepth = (Number(liquidity) * sqrtPrice) / 1e6;
-  return { rate: sqrtPrice * sqrtPrice, tick, liquidity, usdcDepth, eurcDepth };
+  return { rate: sqrtPrice * sqrtPrice, sqrtPrice, tick, liquidity, usdcDepth, eurcDepth };
 }
 
 /// The USDC/EURC pool on Arc: EURC per USDC, current tick, and in-range depth.
