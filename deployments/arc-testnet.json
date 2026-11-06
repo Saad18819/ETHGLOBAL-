@@ -1,0 +1,22 @@
+{
+  "chainId": 5042002,
+  "network": "Arc Testnet",
+  "contracts": {
+    "HookReceiver": {
+      "address": "",
+      "source": "src/HookReceiver.sol",
+      "deployedWith": "Arc Studio",
+      "owner": "",
+      "note": "Fill in after deploying the current src/HookReceiver.sol in Arc Studio (constructor _owner = your wallet)."
+    },
+    "HookReceiver_v1": {
+      "address": "0x9a47b43a3e3965b01e7fe4f01dd74cc985c7add6",
+      "deployedWith": "Arc Studio",
+      "note": "Old version: owner is Studio's deployer, so sweep() is unusable. Do not send funds here."
+    }
+  },
+  "external": {
+    "CrossChainTokenService": "0x63753E722bd2C2A5DF6EE19C5106662208B81077",
+    "MessageTransmitterV2": "0xE737e5cEBEEBa77EFE34D4aa090756590b1CE275"
+  }
+}
