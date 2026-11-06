@@ -56,3 +56,16 @@ npm start
 ```
 
 This calls `setVault(Morpho USDC vault, true)` and `setPool(EURC, USDC/EURC 0.05% pool)`.
+
+## Deployed
+
+| | |
+|---|---|
+| AndThenSettlement | `0xddc5b10c8e8001d5bd385025ad9dfc6a56d38bb3` (Arc Testnet) |
+| Deploy tx | `0xa6c0ee51a02cef14343f3442328706882c967944735f511d518a29ec711d7e0c` |
+| Deployed by | Arc Studio (via `arc-studio run -f studio/AndThenSettlement.flat.sol:contracts/AndThenSettlement.sol`) |
+| Owner | `0xb96E328690d79671328fEE9236264f4e406c186a` |
+| Compiler | 0.8.28, viaIR, optimizer 200, cancun |
+| Studio project | https://studio.arc.io/app/cb20c8eb-57e8-49eb-abda-1c60be57f23f |
+
+Checked on-chain: runtime is 18,144 bytes (same as the local build), all constructor values match.
