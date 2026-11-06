@@ -70,3 +70,55 @@
   font-weight: 500;
   color: var(--pill-ink);
 }
+
+/* On phones the use cases sit above the sentence as one row of chips, titles only, scrolling sideways,
+   so choosing one never means scrolling past the sentence. */
+@media (max-width: 960px) {
+  .panel {
+    order: -1;
+    /* Lets the chip row scroll inside the column instead of widening it. */
+    min-width: 0;
+  }
+
+  .title {
+    display: none;
+  }
+
+  .list {
+    display: flex;
+    gap: 8px;
+    margin: 0 -16px;
+    padding: 0 16px 2px;
+    overflow-x: auto;
+    scrollbar-width: none;
+  }
+
+  .list li {
+    flex: none;
+  }
+
+  .card {
+    padding: 8px 14px;
+    border-radius: 999px;
+  }
+
+  .card[data-active="true"] {
+    background: var(--pill-bg);
+    color: var(--pill-ink);
+  }
+
+  .cardHead {
+    gap: 0;
+  }
+
+  .cardTitle {
+    font-size: 14px;
+    white-space: nowrap;
+  }
+
+  .tag,
+  .cardBody,
+  .stat {
+    display: none;
+  }
+}

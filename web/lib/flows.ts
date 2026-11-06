@@ -362,8 +362,7 @@ export async function sendThroughWallet(context: Context, onStep: (label: string
       break;
     }
     case "hold": {
-      const held = await swap(asset, plan.hold, arrived);
-      await sendOn(arcToken(plan.hold), held, account, recipient, steps);
+      await swap(asset, plan.hold, arrived);
       break;
     }
     case "lend": {
@@ -410,20 +409,6 @@ export async function sendThroughWallet(context: Context, onStep: (label: string
   }
 
   return { steps, sourceTx };
-}
-
-/// Moves what this run produced to someone else, when the user asked for it.
-async function sendOn(token: Address, amount: bigint, account: Address, recipient: Address, steps: Step[]) {
-  if (recipient.toLowerCase() === account.toLowerCase() || amount === 0n) return;
-  const hash = await writeContract(config, {
-    chainId: arc.chainId,
-    address: token,
-    abi: erc20Abi,
-    functionName: "transfer",
-    args: [recipient, amount],
-  });
-  await waitForTransactionReceipt(config, { chainId: arc.chainId, hash });
-  steps.push({ name: "Sent on", explorerUrl: tx(hash) });
 }
 
 /// Loops on the Morpho cirBTC/USDC market through Circle Borrow: borrow USDC, buy cirBTC with Circle Swap,
