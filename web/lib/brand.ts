@@ -22,8 +22,7 @@ export const protocols: Record<Protocol, Swatch & { name: string }> = {
 /// Which protocol does the work for each use case.
 export const protocolOf: Record<NextId, Protocol> = {
   pay: "arc",
-  keep: "arc",
-  hold: "uniswap",
+  hold: "arc",
   pool: "uniswap",
   lend: "morpho",
   loop: "morpho",
