@@ -51,7 +51,8 @@ export async function resolveRecipient(input: string): Promise<Address> {
   throw new Error(`Could not find ${value || "a recipient"}`);
 }
 
-export type CctpFees = { fast: number; standard: number };
+/// Basis points for fast and standard transfers, and the forwarder's flat fee in USDC.
+export type CctpFees = { fast: number; standard: number; forward: number };
 
 /// CCTP fee from a source chain to Arc in basis points, via our API route.
 export async function cctpFees(domain: number): Promise<CctpFees> {
@@ -295,17 +296,38 @@ export async function sendThroughWallet(context: Context, onStep: (label: string
   const arrived = (await arcBalance(arcToken(asset), account)) - before;
   await switchChain(config, { chainId: arc.chainId });
 
-  const swap = async (from: AssetId, to: AssetId, amount: bigint): Promise<bigint> => {
+  /// Swaps on Arc with Circle Swap. By default the user's max slippage bounds it; `atLeast` instead
+  /// requires a minimum out, for a payment that must cover an exact amount.
+  const swap = async (from: AssetId, to: AssetId, amount: bigint, atLeast?: bigint): Promise<bigint> => {
     if (from === to || amount === 0n) return amount;
     onStep(`Swapping ${from} into ${to} with Circle Swap`);
     const toBefore = await arcBalance(arcToken(to), account);
-    const result = await kit.swap({
-      from: { adapter, chain: arc.kitChain as never },
-      tokenIn: kitToken(from) as never,
-      tokenOut: kitToken(to) as never,
-      amountIn: formatUnits(amount, assets[from].decimals),
-      config: { slippageBps: Math.round(Number(plan.slippage) * 100) },
-    });
+    const config = atLeast
+      ? { stopLimit: atLeast.toString() }
+      : { slippageBps: Math.round(Number(plan.slippage) * 100) };
+    let result: Awaited<ReturnType<Kit["swap"]>>;
+    try {
+      result = await kit.swap({
+        from: { adapter, chain: arc.kitChain as never },
+        tokenIn: kitToken(from) as never,
+        tokenOut: kitToken(to) as never,
+        amountIn: formatUnits(amount, assets[from].decimals),
+        config,
+      });
+    } catch (cause) {
+      // InsufficientAmountOut(): the swap would return less than allowed. Nothing was spent; what
+      // arrived is in the wallet on Arc.
+      if (/e52970aa|InsufficientAmountOut/i.test(String((cause as Error)?.message ?? cause))) {
+        throw new Error(
+          atLeast
+            ? `Circle Swap would return less than ${formatUnits(atLeast, assets[to].decimals)} ${to} right now. ` +
+                `Your ${from} is in your wallet on Arc.`
+            : `Circle Swap moved more than your ${plan.slippage}% max slippage. Your ${from} is in your wallet on ` +
+                "Arc; raise the max slippage and try again.",
+        );
+      }
+      throw cause;
+    }
     const received = (await arcBalance(arcToken(to), account)) - toBefore;
     steps.push({ name: `Swapped ${from} into ${formatUnits(received, assets[to].decimals)} ${to}`, explorerUrl: tx(result.txHash) });
     return received;
@@ -314,7 +336,9 @@ export async function sendThroughWallet(context: Context, onStep: (label: string
   switch (plan.next) {
     case "pay": {
       const token = plan.payToken;
-      await swap(asset, token, arrived);
+      // The payment is exact, so the swap only has to cover it; the margin added to the amount moved is
+      // the room for price, and what is left over stays in the wallet.
+      await swap(asset, token, arrived, parseUnits(plan.payAmount, assets[token].decimals));
       onStep("Paying on Arc");
       const hash = await writeContract(config, {
         chainId: arc.chainId,

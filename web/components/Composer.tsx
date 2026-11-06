@@ -16,9 +16,10 @@ import { Sentence } from "./Sentence";
 import { RouterTracker, Steps } from "./Tracker";
 import { sources } from "@/lib/chains";
 import { arc } from "@/lib/contracts";
-import { cctpFees, resolveRecipient, StuckTransfer, wrapEth, sendThroughRouter, sendThroughWallet, type RouterResult } from "@/lib/flows";
+import { cctpFees, resolveRecipient, StuckTransfer, wrapEth, type CctpFees, sendThroughRouter, sendThroughWallet, type RouterResult } from "@/lib/flows";
 import { MAX_LEVERAGE } from "@/lib/loop";
 import { spendable, useBalances } from "@/lib/balances";
+import { describe, record } from "@/lib/history";
 import { protocolOf, protocols, swatchStyle } from "@/lib/brand";
 import { useMarkets } from "@/lib/markets";
 import { assets, bridgedAsset, defaultPlan, wrapsIntoWeth, normalizePlan, routeOf, viaUniswap, type NextId, type Plan } from "@/lib/plan";
@@ -90,16 +91,16 @@ export function Composer({
   const vault = vaults.some((v) => v.address === base.vault) ? base.vault : (vaults[0]?.address ?? "");
   const prices = markets.data?.prices;
   const unsized = { ...base, vault };
+  const domain = sources[unsized.from].cctpDomain;
+  const fees = useQuery({ queryKey: ["cctp-fee", domain], queryFn: () => cctpFees(domain), staleTime: 60_000 });
   // Typed what they get: move enough to cover it at market prices plus a margin; the rest stays in the
   // wallet on Arc.
-  const sized =
+  const sized: Plan =
     unsized.next === "pay" && anchor === "target"
-      ? { ...unsized, amount: amountFor(unsized, prices) ?? unsized.amount }
+      ? { ...unsized, amount: amountFor(unsized, prices, forwarderFee(unsized, fees.data)) ?? unsized.amount }
       : unsized;
   const lltv = markets.data?.markets.find((m) => m.collateral === "cirBTC")?.lltv;
   const chosenPool = usePoolState(poolById(sized.pool), markets.data?.prices);
-  const domain = sources[sized.from].cctpDomain;
-  const fees = useQuery({ queryKey: ["cctp-fee", domain], queryFn: () => cctpFees(domain), staleTime: 60_000 });
 
   const uniswap = viaUniswap(sized);
   const amountIn = parseAmount(sized.amount, assets[sized.asset].decimals);
@@ -125,7 +126,9 @@ export function Composer({
     sized.next === "lend" ||
     (sized.next === "pay" && sized.payToken !== sized.asset);
   // What the move is worth on arrival, in USD: the market value, or less when the source swap quotes less.
-  const marketUsd = (Number(sized.amount) || 0) * (prices?.[sized.asset] ?? NaN);
+  // Circle's forwarder mints USDC on Arc for a flat fee.
+  const forwardFee = bridgedAsset(sized) === "USDC" && route === "wallet" ? (fees.data?.forward ?? 0) : 0;
+  const marketUsd = (Number(sized.amount) || 0) * (prices?.[sized.asset] ?? NaN) - forwardFee;
   const arrivingUsd = uniswap ? Math.min(amount, marketUsd) : marketUsd;
   const keep = 0.999 * slippage;
   const payPrice = prices?.[sized.payToken] ?? NaN;
@@ -187,10 +190,22 @@ export function Composer({
         // From here the order tracker follows the bridge and the settlement on Arc.
         setJourney(undefined);
         setRun({ kind: "router", outcome: outcomes[plan.next].replace("{recipient}", plan.recipient), ...result });
+        record(address, {
+          purpose: plan.next,
+          summary: describe(plan),
+          status: "sent",
+          steps: [{ name: `Sent from ${sources[plan.from].label}`, href: `${result.explorer}/tx/${result.txHash}` }],
+        });
       } else {
         const result = await sendThroughWallet(context, report);
         setJourney((current) => current && { ...current, phase: "done" });
         setRun({ kind: "wallet", steps: result.steps });
+        record(address, {
+          purpose: plan.next,
+          summary: describe(plan),
+          status: "done",
+          steps: result.steps.map((step) => ({ name: step.name, href: step.explorerUrl })),
+        });
       }
       setStatus(undefined);
     } catch (cause) {
@@ -198,6 +213,17 @@ export function Composer({
       setJourney((current) => current && { ...current, failed: true });
       if (cause instanceof StuckTransfer) setStuck(cause);
       setError(readable(cause));
+      // A move the wallet declined before anything was sent is not history.
+      if (!/rejected|denied/i.test(readable(cause))) {
+        record(address, {
+          purpose: plan.next,
+          summary: describe(plan),
+          status: cause instanceof StuckTransfer ? "stuck" : "failed",
+          steps: [],
+          error: readable(cause),
+          stuck: cause instanceof StuckTransfer ? { from: cause.from, tx: cause.txHash } : undefined,
+        });
+      }
     } finally {
       setBusy(false);
     }
@@ -214,8 +240,8 @@ export function Composer({
           vaults={vaults}
           lltv={lltv}
           holdings={balances.data}
-
           locked={locked}
+          poolAprs={Object.fromEntries((markets.data?.mainnet.pools ?? []).map((pool) => [pool.pair, pool.apr]))}
         />
 
         <Options plan={plan} onChange={setPlan} swaps={swaps} forwards={forwards(plan, route)} />
@@ -358,16 +384,21 @@ function liquidityTarget(state: PoolState, prices: Record<string, number> | unde
   return { pair: state.pair, tick: Math.floor(Math.log(sqrtPrice * sqrtPrice) / Math.log(1.0001)), sqrtPrice, open };
 }
 
+/// The forwarder's fee when the wallet route bridges USDC, in USD.
+const forwarderFee = (plan: Plan, fees: CctpFees | undefined) =>
+  bridgedAsset(plan) === "USDC" && routeOf(plan) === "wallet" ? (fees?.forward ?? 0) : 0;
+
 /// How much of the asset covers a payment at market prices, with room for fees, slippage and price moves:
 /// a little for stablecoins, more for anything that moves. Rounded up so it always covers.
-function amountFor(plan: Plan, prices: Record<string, number> | undefined) {
+function amountFor(plan: Plan, prices: Record<string, number> | undefined, forwardFee = 0) {
   const assetPrice = prices?.[plan.asset];
   const payPrice = prices?.[plan.payToken];
   const pay = Number(plan.payAmount);
   if (!assetPrice || !payPrice || !(pay > 0)) return undefined;
   const token = assets[plan.asset].token;
   const margin = token.kind === "stable" ? 1.003 : 1.02;
-  const value = ((pay * payPrice) / assetPrice / (0.999 * (1 - Number(plan.slippage) / 100))) * margin;
+  const value =
+    (((pay * payPrice) / (0.999 * (1 - Number(plan.slippage) / 100))) * margin + forwardFee) / assetPrice;
   const digits = Math.min(token.decimals, token.kind === "btc" ? 6 : token.kind === "eth" ? 5 : 2);
   return String(Math.ceil(value * 10 ** digits) / 10 ** digits);
 }

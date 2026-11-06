@@ -92,7 +92,10 @@ export function Details({
   rows.push(["Arrives", arrival(fast)]);
   if ((plan.asset === "USDC" || usdcOut !== undefined) && fees) {
     const bps = fast ? fees.fast : fees.standard;
-    rows.push(["Transfer fee", bps ? `${((amount * bps) / 10_000).toFixed(4)} USDC (${bps} bps)` : "none"]);
+    const parts = bps ? [`${((amount * bps) / 10_000).toFixed(4)} USDC (${bps} bps)`] : [];
+    // Circle's forwarder mints on Arc for the wallet route, so no gas is needed there.
+    if (routeOf(plan) === "wallet" && fees.forward) parts.push(`${fees.forward.toFixed(4)} USDC for minting on Arc`);
+    rows.push(["Transfer fee", parts.length ? parts.join(" plus ") : "none"]);
   }
 
   switch (plan.next) {

@@ -33,6 +33,7 @@ export function Sentence({
   lltv,
   holdings,
   locked = false,
+  poolAprs,
 }: {
   plan: Plan;
   onChange: (plan: Plan) => void;
@@ -40,6 +41,8 @@ export function Sentence({
   lltv?: number;
   holdings?: Holding[];
   locked?: boolean;
+  /// Fee APR of each pool by id, where there is real activity to measure it from.
+  poolAprs?: Record<string, number>;
 }) {
   const totalOf = (asset: AssetId) =>
     holdings?.filter((h) => h.asset === asset).reduce((sum, h) => sum + Number(h.amount), 0) ?? 0;
@@ -129,10 +132,21 @@ export function Sentence({
             label="Pool"
             swatch={brand}
             value={plan.pool}
-            options={pools.map((pool) => ({ value: pool.id, label: pool.id, hint: `${pool.fee / 10_000}%` }))}
+            options={pools.map((pool) => ({
+              value: pool.id,
+              label: pool.id,
+              hint:
+                poolAprs?.[pool.id] !== undefined
+                  ? `${percent(poolAprs[pool.id])} APR, ${pool.fee / 10_000}% fee`
+                  : `not opened yet, ${pool.fee / 10_000}% fee`,
+            }))}
             onChange={(pool) => set({ pool })}
-          />{" "}
-          pool,{" "}
+          >
+            {poolAprs?.[plan.pool] !== undefined
+              ? `${plan.pool} pool at ${percent(poolAprs[plan.pool], 1)} APR`
+              : `${plan.pool} pool`}
+          </Select>
+          ,{" "}
           <Select<Range>
             label="Range"
             swatch={brand}
