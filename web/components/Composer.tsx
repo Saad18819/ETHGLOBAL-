@@ -103,10 +103,24 @@ export function Composer({
     plan.next === "pool" ||
     plan.next === "lend" ||
     (plan.next === "pay" && plan.payToken !== plan.asset);
-  const blocker =
-    uniswap && sourceQuote.error
+  // What the move is worth on arrival, in USD: the market value, or less when the source swap quotes less.
+  const prices = markets.data?.prices;
+  const marketUsd = (Number(plan.amount) || 0) * (prices?.[plan.asset] ?? NaN);
+  const arrivingUsd = uniswap ? Math.min(amount, marketUsd) : marketUsd;
+  const keep = 0.999 * slippage;
+  const payPrice = prices?.[plan.payToken] ?? NaN;
+  const maxPay = (arrivingUsd * keep) / payPrice;
+  // How much of the asset covers the payment, the same way round.
+  const neededAmount =
+    ((Number(plan.payAmount) || 0) * payPrice) / keep / (prices?.[plan.asset] ?? NaN) *
+    (uniswap && amount > 0 ? Math.max(1, marketUsd / amount) : 1);
+  // Until the source swap is quoted, there is nothing to measure the payment against.
+  const quoting = uniswap && !sourceQuote.data && !sourceQuote.error;
+  const blocker = quoting
+    ? "Getting a Uniswap quote"
+    : uniswap && sourceQuote.error
       ? `No Uniswap quote from ${plan.asset} to USDC on ${sources[plan.from].label}: ${sourceQuote.error.message}`
-      : findBlocker(plan, route, amount, pool.data?.rate, slippage);
+      : findBlocker(plan, route, amount, pool.data?.rate, slippage, maxPay);
 
   async function go() {
     if (!address) return;
@@ -168,6 +182,8 @@ export function Composer({
           vaults={vaults}
           lltv={lltv}
           holdings={balances.data}
+          maxPay={!quoting && Number.isFinite(maxPay) ? maxPay : undefined}
+          neededAmount={Number.isFinite(neededAmount) && neededAmount > 0 ? neededAmount : undefined}
           locked={locked}
         />
 
@@ -251,13 +267,16 @@ function findBlocker(
   amount: number,
   rate: number | undefined,
   slippage: number,
+  maxPay: number,
 ): string | undefined {
   if (!amount) return "Enter an amount";
   if (!route) return `Not available from ${sources[plan.from].label}`;
   if (plan.next === "pay") {
     if (!plan.recipient) return "Who should get paid?";
     const pay = Number(plan.payAmount) || 0;
-    if (route === "wallet" && pay > amount) return `You can pay at most ${plan.amount} ${plan.asset}`;
+    if (Number.isFinite(maxPay) && pay > maxPay) {
+      return `${plan.amount} ${plan.asset} covers about ${round(maxPay, 2)} ${plan.payToken}`;
+    }
     // The CCTP fast fee (up to a few basis points) comes off what arrives, so ask for a little more.
     const needed = (route === "router" && plan.payToken === "EURC" && rate ? pay / rate / slippage : pay) / 0.9995;
     if (route === "router" && needed > amount) return `Move at least ${Math.ceil(needed * 100) / 100} USDC`;
@@ -270,6 +289,8 @@ function findBlocker(
   }
   return undefined;
 }
+
+const round = (value: number, digits: number) => Math.floor(value * 10 ** digits) / 10 ** digits;
 
 function readable(cause: unknown): string {
   if (cause && typeof cause === "object" && "shortMessage" in cause) return String(cause.shortMessage);
