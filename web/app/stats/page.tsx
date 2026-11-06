@@ -8,7 +8,6 @@ import { protocols, tokenColor } from "@/lib/brand";
 import { sources, type SourceId } from "@/lib/chains";
 import { purposeTitle } from "@/lib/history";
 import type { Intent, Slice, Stats } from "@/lib/intents";
-import { usd } from "@/lib/markets";
 
 const PAGE = 10;
 
@@ -52,7 +51,18 @@ function categories(slices: Slice[], label: (key: string) => string, color: (key
   return slices.map((slice) => ({ ...slice, label: label(slice.key), color: color(slice.key) }));
 }
 
-const formatOf = (measure: Measure) => (value: number) => (measure === "volume" ? usd(value) : value.toLocaleString("en-US"));
+/// Whole numbers below a thousand, one decimal with a suffix above it: 538, 1.2k, 3.4M. Amounts below one,
+/// such as 0.005 ETH, keep two significant digits instead of rounding to zero.
+function compact(value: number): string {
+  const abs = Math.abs(value);
+  if (abs >= 1e6) return `${(value / 1e6).toFixed(1)}M`;
+  if (abs >= 1e3) return `${(value / 1e3).toFixed(1)}k`;
+  if (abs > 0 && abs < 1) return String(Number(value.toPrecision(2)));
+  return Math.round(value).toLocaleString("en-US");
+}
+const dollars = (value: number) => `$${compact(value)}`;
+
+const formatOf = (measure: Measure) => (value: number) => (measure === "volume" ? dollars(value) : compact(value));
 
 /// SVG path of a donut slice between two angles, measured clockwise from the top.
 function arc(start: number, end: number, outer: number, inner: number) {
@@ -142,7 +152,7 @@ const chainLabel = (key: string) => (key === "arc" ? "Arc" : (sources[key as Sou
 const when = (at: number) =>
   new Date(at).toLocaleString("en-GB", { day: "numeric", month: "short", hour: "2-digit", minute: "2-digit" });
 const short = (address: string) => `${address.slice(0, 6)}…${address.slice(-4)}`;
-const amount = (value: number) => value.toLocaleString("en-US", { maximumFractionDigits: 6 });
+const amount = compact;
 
 function Recent({ intents }: { intents: Intent[] }) {
   const [page, setPage] = useState(0);
@@ -179,7 +189,7 @@ function Recent({ intents }: { intents: Intent[] }) {
                 <td className={styles.number}>
                   {amount(intent.amount)} {intent.asset}
                 </td>
-                <td className={styles.number}>{usd(intent.usd)}</td>
+                <td className={styles.number}>{dollars(intent.usd)}</td>
                 <td>{intent.status === "done" ? "Done" : intent.status === "sent" ? "Settling" : "Not minted yet"}</td>
               </tr>
             ))}
@@ -230,15 +240,15 @@ export default function StatsPage() {
         <dl className={styles.totals}>
           <div>
             <dt>Volume</dt>
-            <dd>{data ? usd(data.totals.volume) : "…"}</dd>
+            <dd>{data ? dollars(data.totals.volume) : "…"}</dd>
           </div>
           <div>
             <dt>Moves</dt>
-            <dd>{data ? data.totals.count.toLocaleString("en-US") : "…"}</dd>
+            <dd>{data ? compact(data.totals.count) : "…"}</dd>
           </div>
           <div>
             <dt>Wallets</dt>
-            <dd>{data ? data.totals.wallets.toLocaleString("en-US") : "…"}</dd>
+            <dd>{data ? compact(data.totals.wallets) : "…"}</dd>
           </div>
         </dl>
       </div>
