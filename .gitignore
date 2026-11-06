@@ -1,8 +1,11 @@
-# Compiler files
+cat << 'EOF' >> .gitignore
+
+# Compiler files & Build outputs
 cache/
 out/
+dist/
 
-# Ignores development broadcast logs
+# Development broadcast logs
 !/broadcast
 /broadcast/*/31337/
 /broadcast/**/dry-run/
@@ -10,5 +13,12 @@ out/
 # Docs
 docs/
 
-# Dotenv file
+# Environment files
 .env
+*.env
+
+# Dependencies & Node
+node_modules/
+scripts/**/node_modules/
+web/node_modules/
+EOF
