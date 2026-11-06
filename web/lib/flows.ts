@@ -27,6 +27,7 @@ import { sources } from "./chains";
 import { config, type ChainId } from "./config";
 import { arc, erc20Abi, memoAbi, routerAbi } from "./contracts";
 import { assets, type AssetId, type Plan } from "./plan";
+import { MAX_ROUNDS, ROUND_SHARE } from "./loop";
 import { rangeTicks } from "./quote";
 
 export const Action = { Pay: 0, Deposit: 1, Earn: 2, Provide: 3 } as const;
@@ -307,9 +308,6 @@ async function sendOn(token: Address, account: Address, recipient: Address, step
   steps.push({ name: "Sent on", explorerUrl: tx(hash) });
 }
 
-const MAX_ROUNDS = 5;
-/// Each round borrows at most this share of what the collateral still allows, to stay clear of liquidation.
-const ROUND_SHARE = 0.8;
 
 /// Loops on the Morpho cirBTC/USDC market through Circle Borrow: borrow USDC, buy cirBTC with Circle Swap,
 /// add it to the loan, until the position reaches the target leverage.

@@ -81,6 +81,11 @@ button.pill:hover {
   margin-left: 0.3em;
 }
 
+.warn {
+  background: var(--warn-bg);
+  color: var(--warn-ink);
+}
+
 .menu {
   position: absolute;
   z-index: 20;

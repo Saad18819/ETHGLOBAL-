@@ -7,7 +7,7 @@ import { useConnect, useConnection } from "wagmi";
 import { injected } from "wagmi/connectors";
 
 import styles from "./Composer.module.css";
-import { Details, MAX_LEVERAGE } from "./Details";
+import { Details } from "./Details";
 import { NextPanel } from "./NextPanel";
 import { Options } from "./Options";
 import { Sentence } from "./Sentence";
@@ -15,6 +15,7 @@ import { RouterTracker, Steps } from "./Tracker";
 import { sources } from "@/lib/chains";
 import { arc } from "@/lib/contracts";
 import { cctpFees, resolveRecipient, sendThroughRouter, sendThroughWallet, type RouterResult } from "@/lib/flows";
+import { MAX_LEVERAGE } from "@/lib/loop";
 import { useMarkets } from "@/lib/markets";
 import { defaultPlan, normalizePlan, routeOf, type NextId, type Plan } from "@/lib/plan";
 import { usePool } from "@/lib/quote";
@@ -59,6 +60,7 @@ export function Composer({
   );
   const vault = vaults.some((v) => v.address === draft.vault) ? draft.vault : (vaults[0]?.address ?? "");
   const plan = { ...draft, vault };
+  const lltv = markets.data?.markets.find((m) => m.collateral === "cirBTC")?.lltv;
   const domain = sources[plan.from].cctpDomain;
   const fees = useQuery({ queryKey: ["cctp-fee", domain], queryFn: () => cctpFees(domain), staleTime: 60_000 });
 
@@ -110,7 +112,7 @@ export function Composer({
   return (
     <div className={styles.layout}>
       <section className={styles.main}>
-        <Sentence plan={plan} onChange={setPlan} vaults={vaults} locked={locked} />
+        <Sentence plan={plan} onChange={setPlan} vaults={vaults} lltv={lltv} locked={locked} />
 
         <Options plan={plan} onChange={setPlan} swaps={swaps} forwards={forwards(plan, route)} />
         <Details
@@ -130,7 +132,11 @@ export function Composer({
               Connect wallet
             </button>
           )}
-          <span className={styles.status}>{status ?? (isConnected ? blocker : undefined)}</span>
+          {status ? (
+            <span className={styles.status}>{status}</span>
+          ) : (
+            blocker && <span className={styles.warning}>{blocker}</span>
+          )}
         </div>
         {error && <p className={styles.error}>{error}</p>}
 
@@ -195,7 +201,9 @@ function findBlocker(
   }
   if (plan.next === "loop") {
     const leverage = Number(plan.leverage);
-    if (!(leverage > 1 && leverage <= MAX_LEVERAGE)) return `Pick a leverage between 1.1x and ${MAX_LEVERAGE}x`;
+    if (!(leverage > 1 && leverage <= MAX_LEVERAGE)) {
+      return `Leverage goes from 1.1x to ${MAX_LEVERAGE}x on this market`;
+    }
   }
   return undefined;
 }

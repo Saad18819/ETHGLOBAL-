@@ -95,6 +95,7 @@ export function Field({
   label,
   numeric,
   hint,
+  warn,
 }: {
   value: string;
   onChange: (value: string) => void;
@@ -103,6 +104,7 @@ export function Field({
   label: string;
   numeric?: boolean;
   hint?: string;
+  warn?: boolean;
 }) {
   const width = Math.max((value || placeholder || "").length, numeric ? 1 : 4);
   return (
@@ -121,7 +123,7 @@ export function Field({
           onChange(next);
         }}
       />
-      {hint && <span className={styles.badge}>{hint}</span>}
+      {hint && <span className={`${styles.badge} ${warn ? styles.warn : ""}`}>{hint}</span>}
     </span>
   );
 }

@@ -1,14 +1,14 @@
 "use client";
 
 import styles from "./Details.module.css";
-import { arrival, sources } from "@/lib/chains";
+import { arrival } from "@/lib/chains";
 import type { CctpFees } from "@/lib/flows";
 import { percent, usd, type Markets } from "@/lib/markets";
+import { liquidationDrop, loopRounds, MAX_LEVERAGE } from "@/lib/loop";
 import { ranges, routeOf, type Plan } from "@/lib/plan";
 
 export type PoolStats = { rate: number; usdcDepth: number; eurcDepth: number };
 
-export const MAX_LEVERAGE = 3;
 
 type Row = [label: string, value: string];
 
@@ -24,18 +24,11 @@ export function Details({
   pool?: PoolStats;
   fees?: CctpFees;
 }) {
-  const route = routeOf(plan);
   const amount = Number(plan.amount) || 0;
   const fast = plan.speed === "fast";
   const price = markets?.prices[plan.asset] ?? NaN;
   const rows: Row[] = [];
 
-  rows.push([
-    "Route",
-    route === "router"
-      ? "Circle CCTP moves the USDC, Chainlink CCIP the instruction, our contract settles on Arc"
-      : `Circle Bridge Kit from ${sources[plan.from].label}, then your wallet on Arc`,
-  ]);
   rows.push(["Arrives", arrival(fast)]);
   if (plan.asset === "USDC" && fees) {
     const bps = fast ? fees.fast : fees.standard;
@@ -129,17 +122,20 @@ function loopRows(plan: Plan, valueUsd: number, markets?: Markets): Row[] {
   const leverage = Number(plan.leverage);
   const btc = markets?.prices.cirBTC ?? NaN;
   if (!market || !Number.isFinite(valueUsd)) return [];
-  if (!(leverage > 1 && leverage <= MAX_LEVERAGE)) return [["Leverage", `Pick between 1.1x and ${MAX_LEVERAGE}x`]];
+  if (!(leverage > 1 && leverage <= MAX_LEVERAGE)) return [];
 
   const ltv = (leverage - 1) / leverage;
-  const liquidation = (btc * ltv) / market.lltv;
+  const drop = liquidationDrop(leverage, market.lltv);
+  const liquidation = btc * (1 - drop);
+  const rounds = loopRounds(leverage, market.lltv);
   return [
     ["Market", `Morpho cirBTC/USDC, LLTV ${percent(market.lltv, 0)}`],
     ["BTC price", usd(btc)],
     ["Exposure", `${usd(valueUsd * leverage)} of BTC for ${usd(valueUsd)}`],
     ["Borrows", `about ${(valueUsd * (leverage - 1)).toFixed(2)} USDC at ${percent(market.borrowApy, 3)}`],
     ["Loan to value", percent(ltv, 0)],
-    ["Liquidated if BTC falls to", `about ${usd(liquidation)} (${percent(1 - liquidation / btc, 0)} below now)`],
+    ["Liquidated if BTC falls to", `about ${usd(liquidation)} (${percent(drop, 0)} below now)`],
+    ["Rounds", `${rounds}, each one borrow, swap and add collateral`],
     ["Borrow liquidity", usd(market.liquidity)],
   ];
 }

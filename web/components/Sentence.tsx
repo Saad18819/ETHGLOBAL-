@@ -3,6 +3,7 @@
 import { Field, Fixed, Select } from "./Pill";
 import styles from "./Sentence.module.css";
 import { sources } from "@/lib/chains";
+import { liquidationDrop, MAX_LEVERAGE } from "@/lib/loop";
 import { percent, type Vault } from "@/lib/markets";
 import {
   assets,
@@ -23,11 +24,13 @@ export function Sentence({
   plan,
   onChange,
   vaults = [],
+  lltv,
   locked = false,
 }: {
   plan: Plan;
   onChange: (plan: Plan) => void;
   vaults?: Vault[];
+  lltv?: number;
   locked?: boolean;
 }) {
   const set = (patch: Partial<Plan>) => onChange(normalizePlan({ ...plan, ...patch }));
@@ -119,7 +122,14 @@ export function Sentence({
       {plan.next === "loop" && (
         <>
           {" "}
-          <Field label="Leverage" numeric value={plan.leverage} onChange={(leverage) => set({ leverage })} />x
+          <Field
+            label="Leverage"
+            numeric
+            value={plan.leverage}
+            onChange={(leverage) => set({ leverage })}
+            {...leverageHint(Number(plan.leverage), lltv)}
+          />
+          x
         </>
       )}
       {plan.next === "pay" && (
@@ -164,6 +174,13 @@ export function Sentence({
       .
     </div>
   );
+}
+
+function leverageHint(leverage: number, lltv?: number): { hint?: string; warn?: boolean } {
+  if (!(leverage > 1 && leverage <= MAX_LEVERAGE)) return { hint: `1.1x to ${MAX_LEVERAGE}x`, warn: true };
+  if (!lltv) return {};
+  const drop = liquidationDrop(leverage, lltv);
+  return { hint: `liquidated at ${Math.round(drop * 100)}% down`, warn: drop < 0.25 };
 }
 
 function short(value: string) {
