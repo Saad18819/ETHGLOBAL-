@@ -18,43 +18,23 @@
 }
 
 .card {
-  position: relative;
   display: grid;
   gap: 4px;
   width: 100%;
-  padding: 14px 16px 14px 19px;
+  padding: 14px 16px;
   border: 1px solid var(--line);
   border-radius: var(--radius);
   background: var(--surface);
   text-align: left;
-  overflow: hidden;
-  transition:
-    border-color 140ms ease,
-    background 140ms ease,
-    transform 140ms ease;
-}
-
-.card::before {
-  content: "";
-  position: absolute;
-  inset: 0 auto 0 0;
-  width: 3px;
-  background: var(--pill-accent);
-  opacity: 0.55;
+  transition: border-color 140ms ease;
 }
 
 .card:hover {
-  border-color: color-mix(in srgb, var(--pill-accent) 35%, var(--line));
-  transform: translateY(-1px);
+  border-color: var(--faint);
 }
 
 .card[data-active="true"] {
   border-color: var(--pill-accent);
-  background: color-mix(in srgb, var(--pill-bg) 55%, var(--surface));
-}
-
-.card[data-active="true"]::before {
-  opacity: 1;
 }
 
 .cardHead {

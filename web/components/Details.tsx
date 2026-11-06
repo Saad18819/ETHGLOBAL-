@@ -8,7 +8,7 @@ import type { CctpFees } from "@/lib/flows";
 import { feeLabel, type EthQuote } from "@/lib/uniswap";
 import { feeApr, percent, usd, type Markets } from "@/lib/markets";
 import { liquidationDrop, loopRounds, MAX_LEVERAGE } from "@/lib/loop";
-import { ranges, routeOf, type Plan } from "@/lib/plan";
+import { bridgedAsset, ranges, routeOf, type Plan } from "@/lib/plan";
 
 export type PoolStats = { rate: number; usdcDepth: number; eurcDepth: number };
 
@@ -101,7 +101,8 @@ function payRows(plan: Plan, pool?: PoolStats): Row[] {
 }
 
 function holdRows(plan: Plan, valueUsd: number, markets?: Markets, pool?: PoolStats): Row[] {
-  if (plan.hold === "EURC" && plan.asset === "USDC" && pool) {
+  if (plan.hold === bridgedAsset(plan)) return [["Lands as", `${plan.hold} in your wallet on Arc, no swap`]];
+  if (plan.hold === "EURC" && bridgedAsset(plan) === "USDC" && pool) {
     return [
       ["Swaps through", "Uniswap v4 USDC/EURC pool, 0.05% fee"],
       ["You get about", `${(Number(plan.amount) * pool.rate).toFixed(2)} EURC`],

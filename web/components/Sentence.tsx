@@ -9,6 +9,8 @@ import { protocolOf, protocols, tokenColors } from "@/lib/brand";
 import { percent, usd, type Vault } from "@/lib/markets";
 import {
   assets,
+  bridgedAsset,
+  holdOptions,
   nextSteps,
   normalizePlan,
   ranges,
@@ -102,9 +104,11 @@ export function Sentence({
             label="Hold as"
             swatch={tokenColors[plan.hold]}
             value={plan.hold}
-            options={(["EURC", "cirBTC"] as const)
-              .filter((token) => token !== plan.asset)
-              .map((token) => ({ value: token, label: token }))}
+            options={holdOptions(plan.asset).map((token) => ({
+              value: token,
+              label: token,
+              hint: token === bridgedAsset(plan) ? "no swap" : undefined,
+            }))}
             onChange={(hold) => set({ hold })}
           />
         </>

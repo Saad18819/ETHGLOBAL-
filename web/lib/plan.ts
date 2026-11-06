@@ -3,9 +3,9 @@ import { sources, type SourceId } from "./chains";
 export type { SourceId } from "./chains";
 
 export type AssetId = "USDC" | "EURC" | "ETH" | "WETH" | "cirBTC";
-export type NextId = "pay" | "hold" | "keep" | "pool" | "lend" | "loop";
+export type NextId = "pay" | "hold" | "pool" | "lend" | "loop";
 export type PayToken = "USDC" | "EURC" | "cirBTC";
-export type HoldToken = "EURC" | "cirBTC";
+export type HoldToken = "USDC" | "EURC" | "cirBTC" | "WETH";
 export type Range = "full" | "20" | "5" | "1";
 export type Speed = "fast" | "standard";
 
@@ -35,7 +35,7 @@ export const defaultPlan: Plan = {
   recipient: "",
   payAmount: "9",
   payToken: "EURC",
-  hold: "EURC",
+  hold: "USDC",
   range: "full",
   vault: "",
   leverage: "1.5",
@@ -61,8 +61,8 @@ export const ranges: Record<Range, string> = {
 };
 
 /// ETH and WETH go through Uniswap on Ethereum into USDC first, unless WETH is just being moved as is.
-export function viaUniswap(plan: Pick<Plan, "asset" | "next">): boolean {
-  return plan.asset === "ETH" || (plan.asset === "WETH" && plan.next !== "keep");
+export function viaUniswap(plan: Pick<Plan, "asset" | "next" | "hold">): boolean {
+  return plan.asset === "ETH" || (plan.asset === "WETH" && !(plan.next === "hold" && plan.hold === "WETH"));
 }
 
 /// The asset that leaves the source chain.
@@ -72,8 +72,8 @@ export const bridgedAsset = (plan: Plan): AssetId => (viaUniswap(plan) ? "USDC" 
 /// Wallet: bridged with Bridge Kit, finished from the user's wallet on Arc with Circle kits.
 export type Route = "router" | "wallet";
 
-const routerActions: NextId[] = ["pay", "hold", "keep", "pool", "lend"];
-const walletActions: NextId[] = ["pay", "hold", "keep", "pool", "lend", "loop"];
+const routerActions: NextId[] = ["pay", "hold", "pool", "lend"];
+const walletActions: NextId[] = ["pay", "hold", "pool", "lend", "loop"];
 
 export function routeOf(plan: Plan): Route | undefined {
   const routerFits =
@@ -81,7 +81,7 @@ export function routeOf(plan: Plan): Route | undefined {
     // Until the router is deployed on a chain, that chain uses the Bridge Kit route.
     Boolean(sources[plan.from].router?.address) &&
     routerActions.includes(plan.next) &&
-    !(plan.next === "hold" && plan.hold !== "EURC") &&
+    !(plan.next === "hold" && plan.hold !== "EURC" && plan.hold !== "USDC") &&
     !(plan.next === "pay" && plan.payToken === "cirBTC");
   if (routerFits) return "router";
   return walletActions.includes(plan.next) ? "wallet" : undefined;
@@ -103,15 +103,9 @@ export const nextSteps: NextStep[] = [
   },
   {
     id: "hold",
-    title: "Hold EURC or cirBTC",
-    body: "Swap on arrival, through the Uniswap pool or Circle Swap.",
+    title: "Hold on Arc",
+    body: "Land it as USDC, EURC or cirBTC, swapped on arrival when needed, or keep what you moved.",
     verb: "hold it as",
-  },
-  {
-    id: "keep",
-    title: "Keep it on Arc",
-    body: "Land it in your wallet and decide later.",
-    verb: "keep it",
   },
   {
     id: "pool",
@@ -138,6 +132,12 @@ export const stepOf = (id: NextId) => nextSteps.find((s) => s.id === id)!;
 /// Keeps a plan valid after one field changes.
 export function normalizePlan(plan: Plan): Plan {
   const from = assets[plan.asset].sources.includes(plan.from) ? plan.from : assets[plan.asset].sources[0];
-  const hold = plan.hold === plan.asset ? (plan.asset === "EURC" ? "cirBTC" : "EURC") : plan.hold;
+  const hold = holdOptions(plan.asset).includes(plan.hold) ? plan.hold : "USDC";
   return { ...plan, from, hold };
+}
+
+/// What the funds can be held as on Arc: the stable and BTC routes Circle Swap has there, plus WETH when
+/// WETH itself is moved (it has no swap route on Arc testnet).
+export function holdOptions(asset: AssetId): HoldToken[] {
+  return asset === "WETH" ? ["USDC", "EURC", "cirBTC", "WETH"] : ["USDC", "EURC", "cirBTC"];
 }

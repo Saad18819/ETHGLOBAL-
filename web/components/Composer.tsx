@@ -22,7 +22,7 @@ import { useBalances } from "@/lib/balances";
 import { protocolOf, protocols, swatchStyle } from "@/lib/brand";
 import { useMarkets } from "@/lib/markets";
 import { config } from "@/lib/config";
-import { defaultPlan, normalizePlan, routeOf, viaUniswap, type NextId, type Plan } from "@/lib/plan";
+import { bridgedAsset, defaultPlan, normalizePlan, routeOf, viaUniswap, type NextId, type Plan } from "@/lib/plan";
 import { quoteEthToUsdc, swapEthToUsdc } from "@/lib/uniswap";
 import { usePool } from "@/lib/quote";
 
@@ -32,8 +32,7 @@ type Run =
 
 const outcomes: Record<NextId, string> = {
   pay: "Paid {recipient}",
-  hold: "Swapped into EURC on Uniswap",
-  keep: "In your wallet on Arc",
+  hold: "Holding on Arc",
   pool: "Position minted in the USDC/EURC pool",
   lend: "Lending on Morpho",
   loop: "Looped",
@@ -97,7 +96,7 @@ export function Composer({
   const slippage = 1 - Number(plan.slippage) / 100;
   const swaps =
     uniswap ||
-    plan.next === "hold" ||
+    (plan.next === "hold" && plan.hold !== bridgedAsset(plan)) ||
     plan.next === "loop" ||
     plan.next === "pool" ||
     plan.next === "lend" ||
@@ -139,7 +138,7 @@ export function Composer({
         rate: pool.data?.rate,
         pool: pool.data && { tick: pool.data.tick, sqrtPrice: pool.data.sqrtPrice },
         minOut:
-          plan.next === "hold" && pool.data
+          plan.next === "hold" && plan.hold === "EURC" && pool.data
             ? parseUnits((effectiveAmount * pool.data.rate * slippage).toFixed(6), 6)
             : undefined,
       };
@@ -250,7 +249,7 @@ function spendable(asset: Plan["asset"], amount: string) {
 
 /// Whether the result can be sent to someone other than the connected wallet.
 function forwards(plan: Plan, route: ReturnType<typeof routeOf>) {
-  if (plan.next === "hold" || plan.next === "keep") return true;
+  if (plan.next === "hold") return true;
   return route === "router" && (plan.next === "pool" || plan.next === "lend");
 }
 

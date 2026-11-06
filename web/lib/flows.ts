@@ -89,7 +89,10 @@ export function settlementAction({ plan, recipient, minOut = 0n, poolTick = 0, r
       return { ...none, action: Action.Pay, recipient, token: arc.eurc, amount: units(amount), limit: units(amount / rate / keep) + 1n };
     }
     case "hold":
-      return { ...none, action: Action.Deposit, recipient, token: arc.eurc, amount: minOut };
+      // USDC lands as it is; EURC is bought on the Uniswap pool with a minimum out.
+      return plan.hold === "EURC"
+        ? { ...none, action: Action.Deposit, recipient, token: arc.eurc, amount: minOut }
+        : { ...none, action: Action.Deposit, recipient, token: arc.usdc, amount: 0n };
     case "pool": {
       if (!rate) throw new Error("Pool price is not loaded yet");
       const data =
@@ -296,9 +299,6 @@ export async function sendThroughWallet(context: Context, onStep: (label: string
       await sendOn(arcTokens[plan.hold], held, account, recipient, steps);
       break;
     }
-    case "keep":
-      await sendOn(arcTokens[asset], arrived, account, recipient, steps);
-      break;
     case "lend": {
       const usdc = await swap(asset, "USDC", arrived);
       onStep("Depositing into Morpho with Circle Earn");
