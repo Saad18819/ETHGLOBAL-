@@ -8,6 +8,7 @@ import { injected } from "wagmi/connectors";
 
 import styles from "./Composer.module.css";
 import { Details } from "./Details";
+import { Journey, later, phaseOf, type Phase } from "./Journey";
 import { NextPanel } from "./NextPanel";
 import { Options } from "./Options";
 import { Sentence } from "./Sentence";
@@ -63,6 +64,11 @@ export function Composer({
   const [error, setError] = useState<string>();
   const [busy, setBusy] = useState(false);
   const [run, setRun] = useState<Run>();
+  const [journey, setJourney] = useState<{ plan: Plan; phase: Phase; failed?: boolean }>();
+  const report = (label: string) => {
+    setStatus(label);
+    setJourney((current) => current && { ...current, phase: later(current.phase, phaseOf(label)) });
+  };
 
   const { address, isConnected } = useConnection();
   const connect = useConnect();
@@ -141,17 +147,18 @@ export function Composer({
     setBusy(true);
     setError(undefined);
     setRun(undefined);
+    setJourney({ plan, phase: "source" });
     try {
       const recipient =
         plan.next === "pay" ? await resolveRecipient(plan.recipient) : plan.to ? await resolveRecipient(plan.to) : address;
       let effective = plan;
       if (wrapsIntoWeth(plan.asset, plan.from) && bridgedAsset(plan) === "WETH") {
-        await wrapEth(plan.from, amountIn, setStatus);
+        await wrapEth(plan.from, amountIn, report);
         effective = { ...plan, asset: "WETH" };
       } else if (uniswap) {
         const { usdc } = await swapToUsdc(
           { account: address, asset: plan.asset, from: plan.from, amountIn, slippage: Number(plan.slippage) },
-          setStatus,
+          report,
         );
         effective = { ...plan, asset: "USDC", amount: formatUnits(usdc, 6) };
       }
@@ -173,15 +180,19 @@ export function Composer({
       };
 
       if (routeOf(effective) === "router") {
-        const result = await sendThroughRouter(context, setStatus);
+        const result = await sendThroughRouter(context, report);
+        // From here the order tracker follows the bridge and the settlement on Arc.
+        setJourney(undefined);
         setRun({ kind: "router", outcome: outcomes[plan.next].replace("{recipient}", plan.recipient), ...result });
       } else {
-        const result = await sendThroughWallet(context, setStatus);
+        const result = await sendThroughWallet(context, report);
+        setJourney((current) => current && { ...current, phase: "done" });
         setRun({ kind: "wallet", steps: result.steps });
       }
       setStatus(undefined);
     } catch (cause) {
       setStatus(undefined);
+      setJourney((current) => current && { ...current, failed: true });
       setError(readable(cause));
     } finally {
       setBusy(false);
@@ -235,6 +246,7 @@ export function Composer({
             blocker && <span className={styles.warning}>{blocker}</span>
           )}
         </div>
+        {journey && <Journey plan={journey.plan} phase={journey.phase} failed={journey.failed} />}
         {error && <p className={styles.error}>{error}</p>}
 
         {run?.kind === "router" && (
