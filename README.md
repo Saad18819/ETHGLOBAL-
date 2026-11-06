@@ -37,6 +37,7 @@ Settlement is set up with the Morpho USDC vault, the USDC/EURC v4 pool and the S
 | EURC Sepolia → Arc with hook data (CCTP for non-USDC) | landed in `HookReceiver`, hook data decoded, ~16 min at standard finality | [`scripts/eurc-hook`](scripts/eurc-hook/README.md) |
 | CCIP message Arc → Sepolia, fee in native USDC | delivered in **17 s** | `scripts/ccip-hello` |
 | Uniswap v4 swap on Arc's USDC/EURC pool | 1 USDC → 0.851 EURC | `scripts/uniswap-swap` |
+| **Full contract route:** Sepolia `Router.send` → CCTP fast + CCIP → `Settlement` pays on Arc | **Settled in 92 s**: CCTP attested in 21 s, funded at 48 s, CCIP intent at 92 s, 0.9 USDC paid, leftover refunded ([send](https://sepolia.etherscan.io/tx/0x2b4eab550ec87953e4580d2c4b1a6b2f6b0ab2b6c1dc94b7d15bd6c5d1c23849), [settled](https://testnet.arcscan.app/tx/0xc3c6af72a74c59fee59cd626d59768d43dda41ff3fa8bf28e9343fcc1719384d)) | [`scripts/router-e2e`](scripts/router-e2e/pay.ts) |
 
 ## Main use case: pay links
 
