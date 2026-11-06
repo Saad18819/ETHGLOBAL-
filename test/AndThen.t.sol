@@ -91,11 +91,7 @@ contract AndThenTest is Test {
         basePools = new PoolManager(address(this));
         baseCcip = new MockCCIPRouter(0.001 ether);
         router = new AndThenRouter(
-            baseUsdc,
-            ITokenMessengerV2(address(messenger)),
-            basePools,
-            address(settlement),
-            address(this)
+            baseUsdc, ITokenMessengerV2(address(messenger)), basePools, address(settlement), address(this)
         );
         invoices = new InvoiceBook(address(baseCcip), ARC, address(settlement));
         wethPool = _seedPool(basePools, baseUsdc, weth);
@@ -549,7 +545,10 @@ contract AndThenTest is Test {
     }
 
     /// CCTP V2 message layout from developers.circle.com/cctp/references/technical-guide
-    function _burnMessage(bytes memory hook, uint256 amount, uint256 fee, address sender) internal returns (bytes memory) {
+    function _burnMessage(bytes memory hook, uint256 amount, uint256 fee, address sender)
+        internal
+        returns (bytes memory)
+    {
         bytes32 to = bytes32(uint256(uint160(address(settlement))));
         bytes32 tokenMessenger = bytes32(uint256(uint160(address(messenger))));
         bytes memory header = abi.encodePacked(

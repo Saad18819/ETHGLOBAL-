@@ -114,7 +114,11 @@ contract DeploySource is Script {
         address settlement = vm.envAddress("SETTLEMENT");
         vm.startBroadcast();
         router = new AndThenRouter(
-            IERC20(src.usdc), ITokenMessengerV2(Testnet.TOKEN_MESSENGER), IPoolManager(src.poolManager), settlement, owner
+            IERC20(src.usdc),
+            ITokenMessengerV2(Testnet.TOKEN_MESSENGER),
+            IPoolManager(src.poolManager),
+            settlement,
+            owner
         );
         // Receipts come back from Arc over CCIP.
         invoices = new InvoiceBook(src.ccipRouter, Testnet.ARC_SELECTOR, settlement);

@@ -49,7 +49,10 @@ contract AndThenRouter is UniswapV4Swapper, Ownable2Step {
 
     /// Pay with USDC already on this chain. `cctpFinality` is 1000 for a fast transfer (fee up to `maxFee`)
     /// or 2000 for a standard one.
-    function send(Intent memory intent, uint256 amount, uint256 maxFee, uint32 cctpFinality) external returns (bytes32) {
+    function send(Intent memory intent, uint256 amount, uint256 maxFee, uint32 cctpFinality)
+        external
+        returns (bytes32)
+    {
         usdc.safeTransferFrom(msg.sender, address(this), amount);
         return _bridge(intent, amount, maxFee, cctpFinality);
     }
