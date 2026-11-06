@@ -59,6 +59,15 @@ InvoiceBook                                    emit Settled(id, invoiceId, ...)
 | `script/Deploy.s.sol` | Deploy and wire up on Arc testnet and Base Sepolia |
 | `web/` | Next.js app: the sentence, pay links, and the CCTP relayer route |
 
+## Deployed on testnet
+
+| Contract | Chain | Address |
+| - | - | - |
+| `AndThenSettlement` | Arc testnet | [`0x34549793406BC1f24D6A0cEdb3E228b1834BE5a0`](https://explorer.testnet.arc.io/address/0x34549793406BC1f24D6A0cEdb3E228b1834BE5a0) |
+| `AndThenRouter` | Base Sepolia | [`0x6A79d63D85184112FBa127Ca9096e11812309911`](https://sepolia.basescan.org/address/0x6A79d63D85184112FBa127Ca9096e11812309911) |
+| `InvoiceBook` | Base Sepolia | [`0x4A033067f665477674DAB33594a09ee391C71c15`](https://sepolia.basescan.org/address/0x4A033067f665477674DAB33594a09ee391C71c15) |
+| `AndThenRouter` | Ethereum Sepolia | [`0xA45B547BeC291830feE82D4b8261aF3bDE446f6A`](https://sepolia.etherscan.io/address/0xA45B547BeC291830feE82D4b8261aF3bDE446f6A) |
+
 ## Run it
 
 ```bash
