@@ -16,7 +16,8 @@ export type Intent = {
   asset: string;
   amount: number;
   usd: number;
-  status: "done" | "sent" | "stuck";
+  /// Sent through our contracts and settling, then done or refunded once the settlement contract says so.
+  status: "done" | "sent" | "stuck" | "refunded";
   href: string;
 };
 
@@ -45,6 +46,23 @@ export function addIntent(intent: Intent): Promise<boolean> {
     await writeFile(temp, JSON.stringify([intent, ...intents]));
     await rename(temp, FILE);
     return true;
+  });
+  queue = write.catch(() => undefined);
+  return write;
+}
+
+/// Changes the status of recorded intents by transaction, under the same write queue.
+export function updateStatuses(updates: Map<string, Intent["status"]>): Promise<void> {
+  if (updates.size === 0) return Promise.resolve();
+  const write = queue.then(async () => {
+    const intents = (await readIntents()).map((intent) => {
+      const status = updates.get(intent.tx.toLowerCase());
+      return status ? { ...intent, status } : intent;
+    });
+    await mkdir(path.dirname(FILE), { recursive: true });
+    const temp = `${FILE}.${process.pid}.tmp`;
+    await writeFile(temp, JSON.stringify(intents));
+    await rename(temp, FILE);
   });
   queue = write.catch(() => undefined);
   return write;

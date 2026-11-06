@@ -190,7 +190,16 @@ function Recent({ intents }: { intents: Intent[] }) {
                   {amount(intent.amount)} {intent.asset}
                 </td>
                 <td className={styles.number}>{dollars(intent.usd)}</td>
-                <td>{intent.status === "done" ? "Done" : intent.status === "sent" ? "Settling" : "Not minted yet"}</td>
+                <td>
+                  {
+                    {
+                      done: "Done",
+                      sent: "Settling",
+                      stuck: "Not minted yet",
+                      refunded: "Refunded on Arc",
+                    }[intent.status]
+                  }
+                </td>
               </tr>
             ))}
             {rows.length === 0 && (
