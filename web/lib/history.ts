@@ -10,7 +10,8 @@ import { stepOf, type NextId, type Plan } from "./plan";
 export type Entry = {
   id: string;
   at: number;
-  purpose: NextId;
+  /// What the move was for, or "back" for a bridge from Arc to another chain.
+  purpose: NextId | "back";
   summary: string;
   status: "done" | "sent" | "failed" | "stuck";
   steps: { name: string; href?: string }[];
@@ -83,4 +84,4 @@ export function describe(plan: Plan): string {
   return `${moved}, and then ${purpose[plan.next]}`;
 }
 
-export const purposeTitle = (purpose: NextId) => stepOf(purpose).title;
+export const purposeTitle = (purpose: Entry["purpose"]) => (purpose === "back" ? "Bridge back" : stepOf(purpose).title);

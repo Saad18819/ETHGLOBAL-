@@ -44,11 +44,14 @@ export function Composer({
   locked = false,
   invoiceId,
   replyTo,
+  compact = false,
 }: {
   initialPlan?: Plan;
   locked?: boolean;
   invoiceId?: Hex;
   replyTo?: Address;
+  /// Less room above, for when the composer sits under tabs.
+  compact?: boolean;
 }) {
   const [draft, setDraft] = useState(initialPlan);
   // Until the user edits the sentence, it follows their largest holding.
@@ -232,7 +235,7 @@ export function Composer({
   const poolDepth = pool.data ? pool.data.usdcDepth + pool.data.eurcDepth / pool.data.rate : undefined;
 
   return (
-    <div className={styles.layout}>
+    <div className={styles.layout} data-compact={compact || undefined}>
       <section className={styles.main}>
         <Sentence
           plan={plan}

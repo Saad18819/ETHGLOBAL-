@@ -1,16 +1,5 @@
-.page {
-  display: grid;
-  gap: 36px;
+.history {
   max-width: 720px;
-  margin: 0 auto;
-  padding: 48px 40px 96px;
-}
-
-.title {
-  margin: 0;
-  font-size: 40px;
-  font-weight: 600;
-  letter-spacing: -0.03em;
 }
 
 .heading {
@@ -91,23 +80,7 @@
   font-size: 13px;
 }
 
-.links a,
-.arrival a {
+.links a {
   color: var(--muted);
 }
 
-.arrival {
-  display: grid;
-  grid-template-columns: 1fr auto auto;
-  gap: 16px;
-  align-items: baseline;
-  padding: 10px 0;
-  border-bottom: 1px solid var(--line);
-  font-size: 14px;
-}
-
-@media (max-width: 640px) {
-  .page {
-    padding: 32px 16px 64px;
-  }
-}
