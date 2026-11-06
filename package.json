@@ -1,8 +1,0 @@
-{
-  "name": "andthen",
-  "private": true,
-  "license": "MIT",
-  "devDependencies": {
-    "@chainlink/contracts-ccip": "2.0.0"
-  }
-}

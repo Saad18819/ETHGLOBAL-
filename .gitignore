@@ -1,4 +1,6 @@
-# Compiler files and build outputs
+cat << 'EOF' >> .gitignore
+
+# Compiler files & Build outputs
 cache/
 out/
 dist/
@@ -15,7 +17,8 @@ docs/
 .env
 *.env
 
-# Dependencies
+# Dependencies & Node
 node_modules/
 scripts/**/node_modules/
 web/node_modules/
+EOF
