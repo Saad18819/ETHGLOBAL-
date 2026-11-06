@@ -4,8 +4,6 @@ pragma solidity ^0.8.26;
 import {Test} from "forge-std/Test.sol";
 import {IERC20} from "@openzeppelin/contracts/token/ERC20/IERC20.sol";
 import {IERC721} from "@openzeppelin/contracts/token/ERC721/IERC721.sol";
-import {ExtraArgsCodec} from "@chainlink/contracts-ccip/contracts/libraries/ExtraArgsCodec.sol";
-import {IRouterClient} from "@chainlink/contracts-ccip/contracts/interfaces/IRouterClient.sol";
 import {PoolManager} from "@uniswap/v4-core/src/PoolManager.sol";
 import {IPoolManager} from "@uniswap/v4-core/src/interfaces/IPoolManager.sol";
 import {IHooks} from "@uniswap/v4-core/src/interfaces/IHooks.sol";
@@ -95,9 +93,7 @@ contract AndThenTest is Test {
         router = new AndThenRouter(
             baseUsdc,
             ITokenMessengerV2(address(messenger)),
-            IRouterClient(address(baseCcip)),
             basePools,
-            ARC,
             address(settlement),
             address(this)
         );
@@ -110,11 +106,9 @@ contract AndThenTest is Test {
 
     // Happy paths
 
-    function test_PayUsdc_IntentThenFunds() public {
+    function test_PayUsdc_SettlesWhenFundsArrive() public {
         Intent memory intent = _intent(Action.Pay, address(usdc), 100e6, address(invoices));
 
-        _deliver(intent);
-        assertEq(usdc.balanceOf(payee), 0);
         _fund(intent, 101e6, 0.01e6);
 
         assertEq(usdc.balanceOf(payee), 100e6);
@@ -131,12 +125,10 @@ contract AndThenTest is Test {
         assertTrue(receipt.success);
     }
 
-    function test_PayUsdc_FundsThenIntent() public {
+    function test_PayUsdc_NoReceiptWithoutInvoice() public {
         Intent memory intent = _intent(Action.Pay, address(usdc), 50e6, address(0));
 
         _fund(intent, 50e6, 0);
-        assertEq(settlement.getOrder(_key(intent)).funded, 50e6);
-        _deliver(intent);
 
         assertEq(usdc.balanceOf(payee), 50e6);
         assertEq(arcCcip.sent(), 0);
@@ -146,7 +138,6 @@ contract AndThenTest is Test {
         Intent memory intent = _intent(Action.Pay, address(eurc), 40e6, address(0));
         intent.limit = 41e6;
 
-        _deliver(intent);
         _fund(intent, 45e6, 0);
 
         assertEq(eurc.balanceOf(payee), 40e6);
@@ -158,7 +149,6 @@ contract AndThenTest is Test {
     function test_Deposit_SwapsEverything() public {
         Intent memory intent = _intent(Action.Deposit, address(eurc), 19e6, address(0));
 
-        _deliver(intent);
         _fund(intent, 20e6, 0);
 
         assertGt(eurc.balanceOf(payee), 19e6);
@@ -168,7 +158,6 @@ contract AndThenTest is Test {
     function test_Earn_DepositsIntoVaultForRecipient() public {
         Intent memory intent = _intent(Action.Earn, address(vault), 30e6, address(0));
 
-        _deliver(intent);
         _fund(intent, 30e6, 0);
 
         assertEq(vault.balanceOf(payee), 30e6);
@@ -180,7 +169,6 @@ contract AndThenTest is Test {
         intent.limit = 49e6;
         uint256 tokenId = positions.nextTokenId();
 
-        _deliver(intent);
         _fund(intent, 100e6, 0);
 
         assertEq(uint256(settlement.getOrder(_key(intent)).status), uint256(AndThenSettlement.Status.Settled));
@@ -199,7 +187,6 @@ contract AndThenTest is Test {
         intent.data = abi.encode(int24(-100), int24(100));
         uint256 tokenId = positions.nextTokenId();
 
-        _deliver(intent);
         _fund(intent, 100e6, 0);
 
         assertGt(positions.getPositionLiquidity(tokenId), 1e10);
@@ -210,7 +197,6 @@ contract AndThenTest is Test {
         Intent memory intent = _intent(Action.Pay, address(usdc), 10e6, address(0));
         intent.refundTo = refund;
 
-        _deliver(intent);
         _fund(intent, 12e6, 0);
 
         assertEq(usdc.balanceOf(refund), 2e6);
@@ -222,7 +208,6 @@ contract AndThenTest is Test {
     function test_Underfunded_RefundsAndReportsFailure() public {
         Intent memory intent = _intent(Action.Pay, address(usdc), 100e6, address(invoices));
 
-        _deliver(intent);
         _fund(intent, 60e6, 0);
 
         assertEq(usdc.balanceOf(payee), 0);
@@ -236,11 +221,8 @@ contract AndThenTest is Test {
         Intent memory provide = _intent(Action.Provide, address(eurc), 1, address(0));
         Intent memory deposit = _intent(Action.Deposit, address(eurc), 0, address(0));
 
-        _deliver(pay);
         _fund(pay, 20e6, 0);
-        _deliver(provide);
         _fund(provide, 20e6, 0);
-        _deliver(deposit);
         _fund(deposit, 20e6, 0);
 
         assertEq(uint256(settlement.getOrder(_key(pay)).status), uint256(AndThenSettlement.Status.Failed));
@@ -252,7 +234,6 @@ contract AndThenTest is Test {
     function test_DirectDeposit_EnforcesMinimum() public {
         Intent memory intent = _intent(Action.Deposit, address(usdc), 30e6, address(0));
 
-        _deliver(intent);
         _fund(intent, 20e6, 0);
 
         assertEq(usdc.balanceOf(payee), 0);
@@ -263,7 +244,6 @@ contract AndThenTest is Test {
         MockVault other = new MockVault(IERC20(address(usdc)));
         Intent memory intent = _intent(Action.Earn, address(other), 0, address(0));
 
-        _deliver(intent);
         _fund(intent, 30e6, 0);
 
         assertEq(usdc.balanceOf(payer), 30e6);
@@ -274,7 +254,6 @@ contract AndThenTest is Test {
         intent.limit = 1;
         intent.data = abi.encode(int24(100), int24(-100));
 
-        _deliver(intent);
         _fund(intent, 50e6, 0);
 
         assertEq(usdc.balanceOf(payer), 50e6);
@@ -284,7 +263,6 @@ contract AndThenTest is Test {
         Intent memory intent = _intent(Action.Pay, address(usdc), 10e6, address(0));
         intent.deadline = uint64(block.timestamp + 1 hours);
 
-        _deliver(intent);
         vm.warp(block.timestamp + 2 hours);
         _fund(intent, 10e6, 0);
 
@@ -296,7 +274,7 @@ contract AndThenTest is Test {
 
     function test_RevertWhen_BurnHeaderSenderIsNotTokenMessenger() public {
         Intent memory intent = _intent(Action.Pay, address(usdc), 1e6, address(0));
-        bytes memory message = _burnMessage(_key(intent), 1e6, 0, address(router));
+        bytes memory message = _burnMessage(abi.encode(intent), 1e6, 0, address(router));
         _setWord(message, 44, bytes32(uint256(uint160(attacker))));
         vm.expectRevert(AndThenSettlement.NotABurn.selector);
         settlement.receiveFunds(message, "");
@@ -304,7 +282,7 @@ contract AndThenTest is Test {
 
     function test_RevertWhen_BurnHeaderRecipientIsNotOurMessenger() public {
         Intent memory intent = _intent(Action.Pay, address(usdc), 1e6, address(0));
-        bytes memory message = _burnMessage(_key(intent), 1e6, 0, address(router));
+        bytes memory message = _burnMessage(abi.encode(intent), 1e6, 0, address(router));
         _setWord(message, 76, bytes32(uint256(uint160(attacker))));
         vm.expectRevert(AndThenSettlement.NotABurn.selector);
         settlement.receiveFunds(message, "");
@@ -312,7 +290,7 @@ contract AndThenTest is Test {
 
     function test_RevertWhen_BurnIsRelayableByAnyone() public {
         Intent memory intent = _intent(Action.Pay, address(usdc), 1e6, address(0));
-        bytes memory message = _burnMessage(_key(intent), 1e6, 0, address(router));
+        bytes memory message = _burnMessage(abi.encode(intent), 1e6, 0, address(router));
         _setWord(message, 108, bytes32(0));
         vm.expectRevert(AndThenSettlement.NotABurn.selector);
         settlement.receiveFunds(message, "");
@@ -320,38 +298,23 @@ contract AndThenTest is Test {
 
     function test_RevertWhen_BurnTokenIsNotUsdc() public {
         Intent memory intent = _intent(Action.Pay, address(usdc), 1e6, address(0));
-        bytes memory message = _burnMessage(_key(intent), 1e6, 0, address(router));
+        bytes memory message = _burnMessage(abi.encode(intent), 1e6, 0, address(router));
         _setWord(message, 152, bytes32(uint256(uint160(address(weth)))));
         vm.expectRevert(AndThenSettlement.NotABurn.selector);
         settlement.receiveFunds(message, "");
     }
 
     function test_RevertWhen_BurnFromUnknownSender() public {
+        Intent memory intent = _intent(Action.Pay, address(usdc), 1e6, address(0));
+        intent.recipient = attacker;
         vm.expectRevert(AndThenSettlement.UnknownSource.selector);
-        settlement.receiveFunds(_burnMessage(keccak256("x"), 1e6, 0, attacker), "");
+        settlement.receiveFunds(_burnMessage(abi.encode(intent), 1e6, 0, attacker), "");
     }
 
-    // Audit M7: funds only settle the exact intent their burn committed to
-
-    function test_FundsDoNotSettleAnotherIntentWithTheSameId() public {
-        Intent memory real = _intent(Action.Pay, address(usdc), 10e6, address(0));
-        Intent memory other = _intent(Action.Pay, address(usdc), 10e6, address(0));
-        other.id = real.id;
-        other.recipient = attacker;
-
-        _fund(real, 10e6, 0);
-        _deliver(other);
-
-        assertEq(usdc.balanceOf(attacker), 0);
-        assertEq(settlement.getOrder(_key(other)).funded, 0);
-
-        _deliver(real);
-        assertEq(usdc.balanceOf(payee), 10e6);
-    }
+    // A second burn carrying the same intent is refunded, never run twice
 
     function test_LateFundsForAFinishedOrderGoBackToThePayer() public {
         Intent memory intent = _intent(Action.Pay, address(usdc), 10e6, address(0));
-        _deliver(intent);
         _fund(intent, 10e6, 0);
 
         _fund(intent, 5e6, 0);
@@ -366,7 +329,6 @@ contract AndThenTest is Test {
         Intent memory intent = _intent(Action.Pay, address(usdc), 100e6, address(0));
         usdc.setBlocked(payer, true);
 
-        _deliver(intent);
         _fund(intent, 60e6, 0);
 
         assertEq(settlement.claimable(payer), 60e6);
@@ -376,36 +338,12 @@ contract AndThenTest is Test {
         assertEq(usdc.balanceOf(payer), 60e6);
     }
 
-    // Audit M6: funds whose intent never arrives can be rescued after a delay
-
-    function test_RescueAfterDelay() public {
-        Intent memory intent = _intent(Action.Pay, address(usdc), 10e6, address(0));
-        _fund(intent, 10e6, 0);
-
-        vm.expectRevert(AndThenSettlement.NotRescuable.selector);
-        settlement.rescue(_key(intent), payer);
-
-        vm.warp(block.timestamp + 1 days);
-        settlement.rescue(_key(intent), payer);
-        assertEq(usdc.balanceOf(payer), 10e6);
-    }
-
-    function test_RevertWhen_RescuingAnOrderWithAnIntent() public {
-        Intent memory intent = _intent(Action.Pay, address(usdc), 100e6, address(0));
-        _fund(intent, 10e6, 0);
-        _deliver(intent);
-        vm.warp(block.timestamp + 2 days);
-        vm.expectRevert(AndThenSettlement.NotRescuable.selector);
-        settlement.rescue(_key(intent), attacker);
-    }
-
     // Audit M4 and M8: receipts never block settlement, are paid by the order, and can be retried
 
     function test_ReceiptFailureDoesNotBlockSettlement() public {
         arcCcip.setFeeReverts(true);
         Intent memory intent = _intent(Action.Pay, address(usdc), 10e6, address(invoices));
 
-        _deliver(intent);
         _fund(intent, 11e6, 0);
 
         assertEq(usdc.balanceOf(payee), 10e6);
@@ -421,7 +359,6 @@ contract AndThenTest is Test {
     function test_ReceiptWithoutLeftoverIsSkippedNotSubsidised() public {
         Intent memory intent = _intent(Action.Pay, address(usdc), 10e6, address(invoices));
 
-        _deliver(intent);
         _fund(intent, 10e6, 0);
 
         assertEq(usdc.balanceOf(payee), 10e6);
@@ -433,36 +370,9 @@ contract AndThenTest is Test {
 
     function test_RevertWhen_RetryingAReceiptAlreadySent() public {
         Intent memory intent = _intent(Action.Pay, address(usdc), 10e6, address(invoices));
-        _deliver(intent);
         _fund(intent, 11e6, 0);
         vm.expectRevert(AndThenSettlement.NoReceiptDue.selector);
         settlement.retryReceipt{value: 0.1e6}(_key(intent));
-    }
-
-    // CCIP sender checks
-
-    function test_RevertWhen_IntentFromUnknownSender() public {
-        Intent memory intent = _intent(Action.Pay, address(usdc), 1e6, address(0));
-        vm.expectRevert(AndThenSettlement.UnknownSource.selector);
-        arcCcip.deliver(address(settlement), BASE, attacker, abi.encode(intent));
-    }
-
-    function test_RevertWhen_IntentFromUnknownChain() public {
-        Intent memory intent = _intent(Action.Pay, address(usdc), 1e6, address(0));
-        vm.expectRevert(AndThenSettlement.UnknownSource.selector);
-        arcCcip.deliver(address(settlement), 16015286601757825753, address(router), abi.encode(intent));
-    }
-
-    function test_RevertWhen_IntentDeliveredTwice() public {
-        Intent memory intent = _intent(Action.Pay, address(usdc), 1e6, address(0));
-        _deliver(intent);
-        vm.expectRevert(AndThenSettlement.DuplicateIntent.selector);
-        _deliver(intent);
-    }
-
-    function test_AllowsFasterThanFinalityFromSource() public view {
-        (,,, bytes4 allowed) = settlement.getCCVsAndFinalityConfig(BASE, "");
-        assertEq(allowed, bytes4(0x00010001));
     }
 
     function test_RevertWhen_PoolHasHooks() public {
@@ -474,13 +384,13 @@ contract AndThenTest is Test {
 
     // Router
 
-    function test_Router_BurnCommitsToTheWholeIntent() public {
+    function test_Router_BurnCarriesTheWholeIntent() public {
         Intent memory draft = _draft(Action.Pay, address(usdc), 10e6, address(invoices));
         baseUsdc.mint(payer, 10e6);
 
         vm.startPrank(payer);
         baseUsdc.approve(address(router), 10e6);
-        bytes32 id = router.send{value: 0.01 ether}(draft, 10e6, 0.001e6, 1000);
+        bytes32 id = router.send(draft, 10e6, 0.001e6, 1000);
         vm.stopPrank();
 
         (
@@ -498,14 +408,13 @@ contract AndThenTest is Test {
         assertEq(caller, mintRecipient);
         assertEq(maxFee, 0.001e6);
         assertEq(finality, 1000);
-        assertEq(abi.decode(hook, (bytes32)), keccak256(baseCcip.lastData()));
 
-        Intent memory sent = abi.decode(baseCcip.lastData(), (Intent));
+        Intent memory sent = abi.decode(hook, (Intent));
         assertEq(sent.id, id);
         assertEq(sent.payer, payer);
-        assertEq(baseCcip.lastReceiver(), address(settlement));
-        assertEq(baseCcip.lastExtraArgs(), ExtraArgsCodec._getBasicEncodedExtraArgsV3(600_000, bytes4(0)));
-        assertEq(payer.balance, 1 ether - 0.001 ether);
+        assertEq(sent.recipient, payee);
+        // Nothing goes over CCIP on the way there
+        assertEq(baseCcip.sent(), 0);
     }
 
     function test_Router_SwapsThroughPoolFirst() public {
@@ -514,7 +423,7 @@ contract AndThenTest is Test {
 
         vm.startPrank(payer);
         weth.approve(address(router), 6e6);
-        router.swapAndSend{value: 0.001 ether}(wethPool, address(weth), 6e6, 5.9e6, draft, 0, 2000);
+        router.swapAndSend(wethPool, address(weth), 6e6, 5.9e6, draft, 0, 2000);
         vm.stopPrank();
 
         (uint256 amount,,,,, uint32 finality,) = messenger.last();
@@ -540,16 +449,7 @@ contract AndThenTest is Test {
         vm.startPrank(payer);
         baseUsdc.approve(address(router), 1e6);
         vm.expectRevert(AndThenRouter.DataTooLong.selector);
-        router.send{value: 0.001 ether}(draft, 1e6, 0, 1000);
-        vm.stopPrank();
-    }
-
-    function test_Router_RevertWhen_FeeTooLow() public {
-        baseUsdc.mint(payer, 1e6);
-        vm.startPrank(payer);
-        baseUsdc.approve(address(router), 1e6);
-        vm.expectRevert(abi.encodeWithSelector(AndThenRouter.FeeTooLow.selector, 0.001 ether));
-        router.send(_draft(Action.Pay, address(usdc), 1e6, address(0)), 1e6, 0, 1000);
+        router.send(draft, 1e6, 0, 1000);
         vm.stopPrank();
     }
 
@@ -566,13 +466,12 @@ contract AndThenTest is Test {
 
         vm.startPrank(payer);
         baseUsdc.approve(address(router), 26e6);
-        router.send{value: 0.001 ether}(draft, 26e6, 0.01e6, 1000);
+        router.send(draft, 26e6, 0.01e6, 1000);
         vm.stopPrank();
 
-        // CCIP carries the instruction, CCTP carries the money
-        bytes memory intentData = baseCcip.lastData();
-        arcCcip.deliver(address(settlement), BASE, address(router), intentData);
-        settlement.receiveFunds(_burnMessage(keccak256(intentData), 26e6, 0.003e6, address(router)), "");
+        // CCTP carries the money and the instruction together
+        (,,,,,, bytes memory hook) = messenger.last();
+        settlement.receiveFunds(_burnMessage(hook, 26e6, 0.003e6, address(router)), "");
         assertEq(eurc.balanceOf(payee), 25e6);
 
         // The receipt goes back over CCIP and unlocks the invoice
@@ -645,16 +544,12 @@ contract AndThenTest is Test {
         return keccak256(abi.encode(intent));
     }
 
-    function _deliver(Intent memory intent) internal {
-        arcCcip.deliver(address(settlement), BASE, address(router), abi.encode(intent));
-    }
-
     function _fund(Intent memory intent, uint256 amount, uint256 fee) internal {
-        settlement.receiveFunds(_burnMessage(_key(intent), amount, fee, address(router)), "");
+        settlement.receiveFunds(_burnMessage(abi.encode(intent), amount, fee, address(router)), "");
     }
 
     /// CCTP V2 message layout from developers.circle.com/cctp/references/technical-guide
-    function _burnMessage(bytes32 key, uint256 amount, uint256 fee, address sender) internal returns (bytes memory) {
+    function _burnMessage(bytes memory hook, uint256 amount, uint256 fee, address sender) internal returns (bytes memory) {
         bytes32 to = bytes32(uint256(uint160(address(settlement))));
         bytes32 tokenMessenger = bytes32(uint256(uint160(address(messenger))));
         bytes memory header = abi.encodePacked(
@@ -677,7 +572,7 @@ contract AndThenTest is Test {
             fee,
             fee,
             block.number + 1000,
-            abi.encode(key)
+            hook
         );
         return bytes.concat(header, body);
     }

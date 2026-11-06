@@ -126,16 +126,9 @@ export function RouterTracker({
     refetchInterval: (query) => (query.state.data ? false : 5000),
   });
 
-  const intentArrived = Boolean(order.data?.hasIntent);
-  // Where the move is, for the progress row above: the bridge until both the USDC and the instruction are
-  // on Arc, then the action, then the receipt back to the invoice.
-  const phase: Phase = !(intentArrived && funded)
-    ? "bridge"
-    : !settled
-      ? "action"
-      : invoiceId && !paid.data
-        ? "receipt"
-        : "done";
+  // Where the move is, for the progress row above: the bridge until the USDC and its instruction land on
+  // Arc, where the action runs in the same transaction, then the receipt back to the invoice.
+  const phase: Phase = !funded ? "bridge" : !settled ? "action" : invoiceId && !paid.data ? "receipt" : "done";
   const report = useEffectEvent(onProgress);
   useEffect(() => report(phase, failed), [phase, failed]);
 
@@ -145,13 +138,11 @@ export function RouterTracker({
     : (relay.data?.error ??
       (delivering
         ? "Confirm the delivery on Arc in your wallet"
-        : !intentArrived
-          ? "Waiting for the instruction over Chainlink CCIP"
-          : !funded
-            ? "Waiting for Circle to attest the USDC"
-            : phase === "receipt"
-              ? "Paid on Arc, sending the receipt to Base over Chainlink CCIP"
-              : undefined));
+        : !funded
+          ? "Waiting for Circle to attest the USDC"
+          : phase === "receipt"
+            ? "Paid on Arc, sending the receipt to Base over Chainlink CCIP"
+            : undefined));
 
   return (
     <div className={styles.tracker}>
@@ -160,12 +151,14 @@ export function RouterTracker({
         <a href={`${explorer}/tx/${txHash}`} target="_blank" rel="noreferrer">
           {source} transaction
         </a>
-        <a href={`https://ccip.chain.link/tx/${txHash}`} target="_blank" rel="noreferrer">
-          CCIP message
-        </a>
         {(relay.data?.hash ?? delivered) && (
           <a href={`${arc.explorer}/tx/${relay.data?.hash ?? delivered}`} target="_blank" rel="noreferrer">
             Arc delivery
+          </a>
+        )}
+        {invoiceId && settled && (
+          <a href={`https://ccip.chain.link/address/${deployed.settlement}`} target="_blank" rel="noreferrer">
+            CCIP receipt
           </a>
         )}
       </p>

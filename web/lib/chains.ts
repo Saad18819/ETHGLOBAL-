@@ -31,8 +31,8 @@ export type Source = {
   kitChain: string;
   cctpDomain: number;
   explorer: string;
-  /// Chains with a CCIP lane to Arc can run the whole flow through our router and settlement contract,
-  /// once the router is deployed there.
+  /// Chains where our router is deployed run the whole flow through it and the settlement contract. They
+  /// need a CCIP lane from Arc, which carries pay link receipts back.
   router?: { address?: Address; usdc: Address; nativeSymbol: string };
 };
 

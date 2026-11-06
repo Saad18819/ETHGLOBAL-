@@ -64,13 +64,12 @@ const intent =
   "(bytes32 id, address payer, uint8 action, address recipient, address token, uint256 amount, uint256 limit, uint64 deadline, address refundTo, bytes32 invoiceId, address replyTo, bytes data)";
 
 export const routerAbi = parseAbi([
-  `function send(${intent} intent, uint256 amount, uint256 maxFee, uint32 cctpFinality) payable returns (bytes32)`,
-  `function quote(${intent} intent) view returns (uint256)`,
-  "event Sent(bytes32 indexed id, address indexed payer, bytes32 indexed invoiceId, uint256 usdcAmount, bytes32 ccipMessageId)",
+  `function send(${intent} intent, uint256 amount, uint256 maxFee, uint32 cctpFinality) returns (bytes32)`,
+  "event Sent(bytes32 indexed id, address indexed payer, bytes32 indexed invoiceId, uint256 usdcAmount)",
 ]);
 
 export const settlementAbi = parseAbi([
-  `function getOrder(bytes32 key) view returns ((${intent} intent, bool hasIntent, bool receiptSent, uint8 status, uint64 sourceChain, uint64 fundedAt, uint256 funded, uint256 delivered))`,
+  `function getOrder(bytes32 key) view returns ((${intent} intent, bool receiptSent, uint8 status, uint64 sourceChain, uint256 funded, uint256 delivered))`,
   "function receiveFunds(bytes message, bytes attestation)",
   "event Settled(bytes32 indexed key, bytes32 indexed invoiceId, address payer, address indexed recipient, address token, uint256 amount)",
 ]);

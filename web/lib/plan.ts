@@ -136,7 +136,7 @@ export function viaUniswap(plan: Pick<Plan, "asset" | "from" | "next" | "hold" |
 export const bridgedAsset = (plan: Plan): AssetId =>
   viaUniswap(plan) ? "USDC" : wrapsIntoWeth(plan.asset, plan.from) ? "WETH" : plan.asset;
 
-/// Router: USDC from a chain with a CCIP lane, finished by the settlement contract.
+/// Router: USDC from a chain with our router, finished by the settlement contract as it arrives.
 /// Wallet: bridged with Bridge Kit, finished from the user's wallet on Arc with Circle kits.
 export type Route = "router" | "wallet";
 

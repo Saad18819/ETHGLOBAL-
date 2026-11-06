@@ -30,6 +30,7 @@ import {
   swapsAtDestination,
   viaUniswap,
   wrapsIntoWeth,
+  type AssetId,
   type NextId,
   type Plan,
 } from "@/lib/plan";
@@ -205,6 +206,20 @@ export function Composer({
     staleTime: 30_000,
     retry: false,
   });
+  // A wallet move to Arc that buys a token there with Circle Swap: check the route exists at this size
+  // before any funds leave, since its testnet routes come and go.
+  const circleSwap = route === "wallet" && plan.to === "arc" ? circleSwapOf(plan) : undefined;
+  const swapSize = circleSwap?.from === "USDC" ? arrivingUsd : Number(plan.amount);
+  const circleRoute = useQuery({
+    queryKey: ["circle-route", circleSwap?.from, circleSwap?.to, Number(swapSize.toPrecision(2))],
+    queryFn: async () =>
+      (await (
+        await fetch(`/api/swap-route?from=${circleSwap!.from}&to=${circleSwap!.to}&amount=${swapSize.toPrecision(6)}`)
+      ).json()) as { available?: boolean },
+    enabled: Boolean(circleSwap) && swapSize > 0,
+    staleTime: 30_000,
+    retry: false,
+  });
   // Until the source swap is quoted, there is nothing to measure the payment against.
   const quoting = uniswap && !sourceQuote.data && !sourceQuote.error;
   // More than the wallet holds can never go through, whatever the token.
@@ -221,6 +236,8 @@ export function Composer({
       ? `No Uniswap quote from USDC to ${plan.hold} on ${sources[plan.to].label}: ${destinationQuote.error.message}`
     : uniswap && sourceQuote.error
       ? `No Uniswap quote from ${plan.asset} to USDC on ${sources[plan.from].label}: ${sourceQuote.error.message}`
+    : circleSwap && circleRoute.data?.available === false
+      ? `Circle Swap has no route to ${circleSwap.to} on Arc right now, try again in a minute`
     : eurcOut.isError
       ? "No quote for EURC on the Arc pool right now"
     : swappedOnArc > 0 && eurcOut.isLoading
@@ -566,4 +583,14 @@ function amountFor(plan: Plan, prices: Record<string, number> | undefined, forwa
     assetPrice;
   const digits = Math.min(token.decimals, token.kind === "btc" ? 6 : token.kind === "eth" ? 5 : 2);
   return String(Math.ceil(value * 10 ** digits) / 10 ** digits);
+}
+
+/// The swap Circle Swap has to make on Arc for a wallet move, if any: into the token the action needs.
+function circleSwapOf(plan: Plan): { from: AssetId; to: AssetId } | undefined {
+  const moved = bridgedAsset(plan);
+  if (plan.next === "loop") return { from: moved === "cirBTC" ? "USDC" : moved, to: "cirBTC" };
+  if (plan.next === "hold" && plan.hold !== moved) return { from: moved, to: plan.hold as AssetId };
+  if (plan.next === "pay" && plan.payToken !== moved) return { from: moved, to: plan.payToken as AssetId };
+  if (plan.next === "lend" && moved !== "USDC") return { from: moved, to: "USDC" };
+  return undefined;
 }
