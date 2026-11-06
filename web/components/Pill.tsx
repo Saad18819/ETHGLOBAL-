@@ -56,6 +56,9 @@ export function Select<T extends string>({
     };
   }, [open]);
 
+  // Nothing to choose between: a pill would promise a choice, so it reads as plain text instead.
+  if (options.length <= 1 && !custom) return <span>{children ?? current?.label ?? value}</span>;
+
   return (
     <span className={styles.anchor} ref={ref}>
       <button
