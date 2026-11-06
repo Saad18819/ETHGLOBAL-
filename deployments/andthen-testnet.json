@@ -1,0 +1,36 @@
+{
+  "arcTestnet": {
+    "chainId": 5042002,
+    "AndThenSettlement": "0xae165c6b45d17bb1ffe2a6941a07e07a534c5271",
+    "deployTx": "0x48717e2afd5eaf46e88b45fc8a02f8e69df012b068f7a2d14831a0de8829e53c",
+    "deployedWith": "Arc Studio",
+    "studioProject": "https://studio.arc.io/app/cb20c8eb-57e8-49eb-abda-1c60be57f23f",
+    "owner": "0xb96E328690d79671328fEE9236264f4e406c186a",
+    "setup": [
+      "setVault(Morpho USDC vault 0x8f2D33B5D4B9B5F02DF635AE308F7B4C9dA8D2DC, true)",
+      "setPool(EURC, USDC/EURC fee 500 tickSpacing 10)",
+      "setSource(Base Sepolia selector, domain 6, router 0x6A79d63D85184112FBa127Ca9096e11812309911, TokenMessengerV2, Base USDC)",
+      "setSource(Ethereum Sepolia selector, domain 0, router 0xE903D614De200198Fd03D73BbA1832f523d847a6, TokenMessengerV2, Sepolia USDC)"
+    ],
+    "previous": {
+      "AndThenSettlement": "0xddc5b10c8e8001d5bd385025ad9dfc6a56d38bb3",
+      "note": "First version (CCIP carried the intent), also deployed by Arc Studio"
+    }
+  },
+  "ethereumSepolia": {
+    "chainId": 11155111,
+    "AndThenRouter": "0xE903D614De200198Fd03D73BbA1832f523d847a6",
+    "InvoiceBook": "0xd595E25FeEd90b2647E66A82d26B9ad97542eb3A",
+    "deployedWith": "forge script script/Deploy.s.sol:DeploySource"
+  },
+  "baseSepolia": {
+    "chainId": 84532,
+    "AndThenRouter": "0x6A79d63D85184112FBa127Ca9096e11812309911",
+    "note": "Router owner calls setSettlement(0xae165c6b45d17bb1ffe2a6941a07e07a534c5271). InvoiceBook stores the settlement as immutable, so Base needs a new one from DeploySource."
+  },
+  "webEnv": {
+    "NEXT_PUBLIC_SETTLEMENT": "0xae165c6b45d17bb1ffe2a6941a07e07a534c5271",
+    "NEXT_PUBLIC_ROUTER_ETHEREUM": "0xE903D614De200198Fd03D73BbA1832f523d847a6",
+    "NEXT_PUBLIC_ROUTER_BASE": "0x6A79d63D85184112FBa127Ca9096e11812309911"
+  }
+}

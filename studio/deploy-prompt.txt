@@ -1,0 +1,19 @@
+This is a NEW version of AndThenSettlement (the intent now travels in the CCTP hook data). It replaces the earlier one you deployed at 0xddc5b10c8e8001d5bd385025ad9dfc6a56d38bb3. Overwrite contracts/AndThenSettlement.sol with the attached file and deploy it as a new contract.
+
+I placed the file contracts/AndThenSettlement.sol in the workspace. It is our settlement contract with every import already inlined (flattened). Use it exactly as is. Do not modify, refactor, split, or "fix" the code.
+
+1. Compile contracts/AndThenSettlement.sol with Solidity 0.8.28, viaIR enabled (required, otherwise "stack too deep"), optimizer enabled with 200 runs, EVM version cancun.
+
+2. Deploy the contract named AndThenSettlement on Arc Testnet with these constructor arguments, in this order:
+   ccipRouter       = 0xdE4E7FED43FAC37EB21aA0643d9852f75332eab8
+   _poolManager     = 0x8366a39CC670B4001A1121B8F6A443A643e40951
+   _usdc            = 0x3600000000000000000000000000000000000000
+   _transmitter     = 0xE737e5cEBEEBa77EFE34D4aa090756590b1CE275
+   _tokenMessenger  = 0x8FE6B999Dc680CcFDD5Bf7EB0974218be2542DAA
+   _positionManager = 0x6049c9a0e26405C0985f9E3685C87d0aE917f82B
+   _permit2         = 0x000000000022D473030F116dDEE9F6B43aC78BA3
+   initialOwner     = 0xb96E328690d79671328fEE9236264f4e406c186a
+
+3. Do not call any other functions after deploying. The owner will run the setup calls from their own wallet.
+
+4. Reply with: the deployed contract address, the deployment transaction hash, and the compiler settings you actually used.
