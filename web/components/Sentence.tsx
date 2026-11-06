@@ -33,7 +33,7 @@ export function Sentence({
   lltv,
   holdings,
   locked = false,
-  poolAprs,
+  poolRates,
 }: {
   plan: Plan;
   onChange: (plan: Plan) => void;
@@ -41,8 +41,9 @@ export function Sentence({
   lltv?: number;
   holdings?: Holding[];
   locked?: boolean;
-  /// Fee APR of each pool by id, where there is real activity to measure it from.
-  poolAprs?: Record<string, number>;
+  /// Fee APR of each pool by id: measured on Arc mainnet, or for a pair not on Arc yet, the same pair
+  /// on another chain (`where`).
+  poolRates?: Record<string, { apr: number; where?: string }>;
 }) {
   const totalOf = (asset: AssetId) =>
     holdings?.filter((h) => h.asset === asset).reduce((sum, h) => sum + Number(h.amount), 0) ?? 0;
@@ -70,6 +71,7 @@ export function Sentence({
             : undefined
         }
         swatch={token}
+        maxChars={10}
       />{" "}
       <Select<AssetId>
         label="Asset"
@@ -135,16 +137,18 @@ export function Sentence({
             options={pools.map((pool) => ({
               value: pool.id,
               label: pool.id,
-              hint:
-                poolAprs?.[pool.id] !== undefined
-                  ? `${percent(poolAprs[pool.id])} APR, ${pool.fee / 10_000}% fee`
-                  : `not opened yet, ${pool.fee / 10_000}% fee`,
+              hint: poolRates?.[pool.id]
+                ? `${percent(poolRates[pool.id].apr, 1)} APR${poolRates[pool.id].where ? ` on ${poolRates[pool.id].where}` : ""}, ${pool.fee / 10_000}% fee`
+                : `not opened yet, ${pool.fee / 10_000}% fee`,
             }))}
             onChange={(pool) => set({ pool })}
           />{" "}
           {/* Only the pool is a choice; its rate is a fact about it, so it reads as plain text. */}
           pool
-          {poolAprs?.[plan.pool] !== undefined ? ` at ${percent(poolAprs[plan.pool], 1)} APR` : ""},{" "}
+          {poolRates?.[plan.pool]
+            ? ` at ${percent(poolRates[plan.pool].apr, 1)} APR${poolRates[plan.pool].where ? ` on ${poolRates[plan.pool].where}` : ""}`
+            : ""}
+          ,{" "}
           <Select<Range>
             label="Range"
             swatch={brand}
@@ -167,12 +171,9 @@ export function Sentence({
               hint: `${percent(vault.apy)} APY, ${usd(vault.liquidity)} liquidity`,
             }))}
             onChange={(vault) => set({ vault })}
-          >
-            {(() => {
-              const vault = vaults.find((v) => v.address === plan.vault) ?? vaults[0];
-              return `${vault.name} at ${percent(vault.apy)}`;
-            })()}
-          </Select>
+          />{" "}
+          {/* Only the vault is a choice; its rate reads as plain text, like the pool's. */}
+          at {percent((vaults.find((v) => v.address === plan.vault) ?? vaults[0]).apy)} APY
         </>
       )}
       {plan.next === "loop" && (
@@ -206,6 +207,8 @@ export function Sentence({
               placeholder="name.eth"
               value={plan.recipient}
               onChange={(recipient) => set({ recipient })}
+              display={shortAddress}
+              maxChars={18}
             />
           )}{" "}
           {locked ? (
@@ -220,6 +223,7 @@ export function Sentence({
                 value={plan.payAmount}
                 onChange={(payAmount) => set({ payAmount })}
                 swatch={tokenColor(plan.payToken)}
+                maxChars={10}
               />{" "}
               <Select<PayToken>
                 label="Pay in"

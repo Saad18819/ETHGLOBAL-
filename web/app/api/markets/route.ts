@@ -5,6 +5,8 @@ import { encodeAbiParameters, keccak256, toEventSelector, zeroAddress } from "vi
 import type { Markets } from "@/lib/markets";
 import { poolStats, type PoolSpec } from "@/lib/mainnet";
 import { arc as arcContracts } from "@/lib/contracts";
+import { pools as arcPools } from "@/lib/pools";
+import { references } from "@/lib/references";
 import { mainnetTokens, tokens } from "@/lib/tokens";
 
 const kit = new AppKit();
@@ -98,6 +100,7 @@ async function mainnet(prices: Record<string, number>): Promise<Markets["mainnet
         liquidity: Number(market.liquidity?.amount ?? 0),
       })),
     pools: pools.filter((pool) => pool !== undefined),
+    references: await references(arcPools.filter((pair) => pair.id !== "USDC/EURC")).catch(() => []),
   };
   mainnetCache = { at: Date.now(), data };
   return data;
@@ -158,7 +161,7 @@ export async function GET() {
     },
     pool,
     mainnet: await mainnet({ USDC: 1, EURC: price(arc, "0x89b50855aa3be2f677cd6303cec089b5f319d72a") }).catch(
-      () => ({ vaults: [], markets: [], pools: [] }),
+      () => ({ vaults: [], markets: [], pools: [], references: [] }),
     ),
     asOf: new Date().toISOString(),
   };

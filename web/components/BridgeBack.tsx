@@ -95,6 +95,7 @@ export function BridgeBack() {
           numeric
           value={amount}
           onChange={setAmount}
+          maxChars={10}
           swatch={tokenColor(token)}
           hint={balance.data !== undefined ? `of ${short(balance.data)}` : undefined}
           presets={

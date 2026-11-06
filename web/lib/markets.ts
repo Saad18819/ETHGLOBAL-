@@ -36,6 +36,8 @@ export type Markets = {
     vaults: { name: string; apy: number; liquidity: number }[];
     markets: { pair: string; borrowApy: number; lltv: number; liquidity: number }[];
     pools: { id: string; pair: string; fee: number; tvlUsd: number; volume24hUsd: number; fees24hUsd: number; apr: number; coverage: number }[];
+    /// The same pair on Ethereum, for pools that do not exist on Arc yet.
+    references: { pair: string; apr: number; tvl: number; source: string }[];
   };
   asOf: string;
 };

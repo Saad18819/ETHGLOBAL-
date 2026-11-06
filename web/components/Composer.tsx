@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useRef, useState } from "react";
 import Link from "next/link";
 import { useQuery } from "@tanstack/react-query";
 import { formatUnits, parseUnits, type Address, type Hex } from "viem";
@@ -18,7 +18,7 @@ import { sources } from "@/lib/chains";
 import { arc } from "@/lib/contracts";
 import { cctpFees, resolveRecipient, StuckTransfer, wrapEth, type CctpFees, sendThroughRouter, sendThroughWallet, type RouterResult } from "@/lib/flows";
 import { MAX_LEVERAGE } from "@/lib/loop";
-import { spendable, useBalances } from "@/lib/balances";
+import { holdingOf, short, spendable, useBalances } from "@/lib/balances";
 import { describe, publish, record } from "@/lib/history";
 import { protocolOf, protocols, swatchStyle } from "@/lib/brand";
 import { useMarkets } from "@/lib/markets";
@@ -71,9 +71,21 @@ export function Composer({
   const [busy, setBusy] = useState(false);
   const [run, setRun] = useState<Run>();
   const [journey, setJourney] = useState<{ plan: Plan; phase: Phase; failed?: boolean }>();
+  /// What finished, once a move succeeds: the button then offers the next one.
+  const [done, setDone] = useState<string>();
+  // How far the running move got, readable from the error handler.
+  const reached = useRef<Phase>("source");
   const report = (label: string) => {
     setStatus(label);
+    reached.current = later(reached.current, phaseOf(label));
     setJourney((current) => current && { ...current, phase: later(current.phase, phaseOf(label)) });
+  };
+  const reset = () => {
+    setDone(undefined);
+    setRun(undefined);
+    setJourney(undefined);
+    setError(undefined);
+    setStuck(undefined);
   };
 
   const { address, isConnected } = useConnection();
@@ -131,11 +143,14 @@ export function Composer({
   // What the move is worth on arrival, in USD: the market value, or less when the source swap quotes less.
   // Circle's forwarder mints USDC on Arc for a flat fee.
   const forwardFee = bridgedAsset(sized) === "USDC" && route === "wallet" ? (fees.data?.forward ?? 0) : 0;
-  const marketUsd = (Number(sized.amount) || 0) * (prices?.[sized.asset] ?? NaN) - forwardFee;
-  const arrivingUsd = uniswap ? Math.min(amount, marketUsd) : marketUsd;
+  const marketUsd = (Number(sized.amount) || 0) * (prices?.[sized.asset] ?? NaN);
+  // The lower of the quote and the market, then the bridge's own fees off whichever it is.
+  const grossUsd = uniswap ? Math.min(amount, marketUsd) : marketUsd;
+  const bridgeBps = (sized.speed === "fast" ? fees.data?.fast : fees.data?.standard) ?? 0;
+  const arrivingUsd = grossUsd * (1 - bridgeBps / 10_000) - forwardFee;
   const keep = 0.999 * slippage;
   const payPrice = prices?.[sized.payToken] ?? NaN;
-  const maxPay = (arrivingUsd * keep) / payPrice;
+  const maxPay = (arrivingUsd * keep) / marginFor(sized) / payPrice;
   // Typed the amount moved: they get the most it covers.
   const plan =
     sized.next === "pay" && anchor === "source" && Number.isFinite(maxPay) && !(uniswap && !sourceQuote.data)
@@ -144,7 +159,15 @@ export function Composer({
   const leftover = maxPay - (Number(plan.payAmount) || 0);
   // Until the source swap is quoted, there is nothing to measure the payment against.
   const quoting = uniswap && !sourceQuote.data && !sourceQuote.error;
-  const blocker = quoting
+  // More than the wallet holds can never go through, whatever the token.
+  const held = balances.data && holdingOf(balances.data, plan.asset, plan.from);
+  const overBalance =
+    balances.data !== undefined && Number(plan.amount) > Number(held?.amount ?? 0)
+      ? `You have ${held ? short(held.amount) : "no"} ${plan.asset} on ${sources[plan.from].label}`
+      : undefined;
+  const blocker = overBalance
+    ? overBalance
+    : quoting
     ? "Getting a Uniswap quote"
     : uniswap && sourceQuote.error
       ? `No Uniswap quote from ${plan.asset} to USDC on ${sources[plan.from].label}: ${sourceQuote.error.message}`
@@ -156,6 +179,8 @@ export function Composer({
     setError(undefined);
     setRun(undefined);
     setStuck(undefined);
+    setDone(undefined);
+    reached.current = "source";
     setJourney({ plan, phase: "source" });
     // What the stats record about this move: what left which chain, and what for.
     const shared = {
@@ -202,6 +227,7 @@ export function Composer({
         // From here the order tracker follows the bridge and the settlement on Arc.
         setJourney(undefined);
         setRun({ kind: "router", outcome: outcomes[plan.next].replace("{recipient}", plan.recipient), ...result });
+        setDone("Sent. The order tracker below follows it to Arc.");
         record(address, {
           purpose: plan.next,
           summary: describe(plan),
@@ -213,6 +239,7 @@ export function Composer({
         const result = await sendThroughWallet(context, report);
         setJourney((current) => current && { ...current, phase: "done" });
         setRun({ kind: "wallet", steps: result.steps });
+        setDone(`Done. ${describe(plan)}.`);
         record(address, {
           purpose: plan.next,
           summary: describe(plan),
@@ -225,11 +252,25 @@ export function Composer({
       setStatus(undefined);
     } catch (cause) {
       setStatus(undefined);
+      const cancelled = /rejected|denied|cancell?ed/i.test(readable(cause));
+      // `report` moves this along during the awaits above.
+      const phase: Phase = reached.current as Phase;
+      // Declined in the wallet before anything left the source chain: as if the move never started.
+      if (cancelled && phase === "source") {
+        setJourney(undefined);
+        return;
+      }
       setJourney((current) => current && { ...current, failed: true });
       if (cause instanceof StuckTransfer) setStuck(cause);
-      setError(readable(cause));
-      // A move the wallet declined before anything was sent is not history.
-      if (!/rejected|denied/i.test(readable(cause))) {
+      setError(
+        cancelled
+          ? phase === "bridge"
+            ? "Cancelled in your wallet"
+            : "Cancelled in your wallet. What already arrived is in your wallet on Arc"
+          : readable(cause),
+      );
+      // A move the wallet declined is not history; anything that moved shows up from the chain.
+      if (!cancelled) {
         record(address, {
           purpose: plan.next,
           summary: describe(plan),
@@ -257,7 +298,12 @@ export function Composer({
           lltv={lltv}
           holdings={balances.data}
           locked={locked}
-          poolAprs={Object.fromEntries((markets.data?.mainnet.pools ?? []).map((pool) => [pool.pair, pool.apr]))}
+          poolRates={{
+            ...Object.fromEntries(
+              (markets.data?.mainnet.references ?? []).map((ref) => [ref.pair, { apr: ref.apr, where: "Ethereum" }]),
+            ),
+            ...Object.fromEntries((markets.data?.mainnet.pools ?? []).map((pool) => [pool.pair, { apr: pool.apr }])),
+          }}
         />
 
         <Options plan={plan} onChange={setPlan} swaps={swaps} forwards={forwards(plan, route)} />
@@ -272,24 +318,35 @@ export function Composer({
         />
 
         <div className={styles.actions}>
-          {isConnected ? (
+          {!isConnected ? (
+            <button className={styles.primary} onClick={() => connect.mutate({ connector: injected() })}>
+              Connect wallet
+            </button>
+          ) : busy ? null : done ? (
+            <>
+              <button
+                className={styles.primary}
+                style={swatchStyle(protocols[protocolOf[plan.next]])}
+                onClick={reset}
+              >
+                Move more
+              </button>
+              <span className={styles.success}>{done}</span>
+            </>
+          ) : (
             <button
               className={styles.primary}
               style={swatchStyle(protocols[protocolOf[plan.next]])}
-              disabled={busy || Boolean(blocker)}
+              disabled={Boolean(blocker)}
               onClick={go}
             >
-              {busy ? "Working" : "Move it"}
-            </button>
-          ) : (
-            <button className={styles.primary} onClick={() => connect.mutate({ connector: injected() })}>
-              Connect wallet
+              Move it
             </button>
           )}
           {status ? (
             <span className={styles.status}>{status}</span>
           ) : (
-            blocker && <span className={styles.warning}>{blocker}</span>
+            !busy && !done && blocker && <span className={styles.warning}>{blocker}</span>
           )}
         </div>
         {journey && <Journey plan={journey.plan} phase={journey.phase} failed={journey.failed} />}
@@ -400,6 +457,13 @@ function liquidityTarget(state: PoolState, prices: Record<string, number> | unde
   return { pair: state.pair, tick: Math.floor(Math.log(sqrtPrice * sqrtPrice) / Math.log(1.0001)), sqrtPrice, open };
 }
 
+/// Room left between what a move is worth and what it pays, for prices that move before it lands: a
+/// little when the money stays the same stablecoin, more when a swap is on the way.
+function marginFor(plan: Plan) {
+  const swapless = assets[plan.asset].token.kind === "stable" && !viaUniswap(plan) && bridgedAsset(plan) === plan.payToken;
+  return swapless ? 1.005 : 1.02;
+}
+
 /// The forwarder's fee when the wallet route bridges USDC, in USD.
 const forwarderFee = (plan: Plan, fees: CctpFees | undefined) =>
   bridgedAsset(plan) === "USDC" && routeOf(plan) === "wallet" ? (fees?.forward ?? 0) : 0;
@@ -412,7 +476,7 @@ function amountFor(plan: Plan, prices: Record<string, number> | undefined, forwa
   const pay = Number(plan.payAmount);
   if (!assetPrice || !payPrice || !(pay > 0)) return undefined;
   const token = assets[plan.asset].token;
-  const margin = token.kind === "stable" ? 1.003 : 1.02;
+  const margin = marginFor(plan);
   const value =
     (((pay * payPrice) / (0.999 * (1 - Number(plan.slippage) / 100))) * margin + forwardFee) / assetPrice;
   const digits = Math.min(token.decimals, token.kind === "btc" ? 6 : token.kind === "eth" ? 5 : 2);

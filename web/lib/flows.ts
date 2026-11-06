@@ -309,7 +309,8 @@ export async function sendThroughWallet(context: Context, onStep: (label: string
     onStep(`Swapping ${from} into ${to} with Circle Swap`);
     const toBefore = await arcBalance(arcToken(to), account);
     const config = atLeast
-      ? { stopLimit: atLeast.toString() }
+      ? // AppKit's swap config takes the stop limit in whole tokens ("18.54"), not base units.
+        { stopLimit: formatUnits(atLeast, assets[to].decimals) }
       : { slippageBps: Math.round(Number(plan.slippage) * 100) };
     let result: Awaited<ReturnType<Kit["swap"]>>;
     try {
@@ -323,7 +324,7 @@ export async function sendThroughWallet(context: Context, onStep: (label: string
     } catch (cause) {
       // InsufficientAmountOut(): the swap would return less than allowed. Nothing was spent; what
       // arrived is in the wallet on Arc.
-      if (/e52970aa|InsufficientAmountOut/i.test(String((cause as Error)?.message ?? cause))) {
+      if (/e52970aa|InsufficientAmountOut|stop limit/i.test(String((cause as Error)?.message ?? cause))) {
         throw new Error(
           atLeast
             ? `Circle Swap would return less than ${formatUnits(atLeast, assets[to].decimals)} ${to} right now. ` +

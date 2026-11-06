@@ -147,6 +147,7 @@ export function Field({
   presets,
   swatch,
   maxChars,
+  display,
 }: {
   value: string;
   onChange: (value: string) => void;
@@ -160,7 +161,11 @@ export function Field({
   swatch?: Swatch;
   /// Caps the width for long values such as hashes, which then show truncated.
   maxChars?: number;
+  /// A shorter form shown while the field is not being edited, such as an address as 0x1234…abcd.
+  display?: (value: string) => string;
 }) {
+  const [editing, setEditing] = useState(false);
+  const shown = !editing && display && value ? display(value) : value;
   return (
     <span
       className={`${styles.pill} ${swatch ? styles.swatch : styles[tone]} ${styles.field}`}
@@ -170,10 +175,13 @@ export function Field({
       <span
         className={`${styles.sizer} ${maxChars ? styles.capped : ""}`}
         style={maxChars ? { maxWidth: `${maxChars}ch` } : undefined}
-        data-value={(value || placeholder || "").padEnd(numeric ? 1 : 4, " ")}>
+        data-value={(shown || placeholder || "").padEnd(numeric ? 1 : 4, " ")}>
         <input
           aria-label={label}
-          value={value}
+          value={shown}
+          title={shown !== value ? value : undefined}
+          onFocus={() => setEditing(true)}
+          onBlur={() => setEditing(false)}
           placeholder={placeholder}
           inputMode={numeric ? "decimal" : "text"}
           spellCheck={false}
