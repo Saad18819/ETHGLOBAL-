@@ -256,10 +256,21 @@ export default function StatsPage() {
                 name: "Source tokens",
                 items: categories(data.byToken, (key) => key, (key) => tokenColor(key).accent),
               },
-            ].flatMap(({ name, items }) => [
-              <Breakdown key={`${name}-volume`} title={`${name} by volume`} items={items} measure="volume" />,
-              <Breakdown key={`${name}-count`} title={`${name} by number of moves`} items={items} measure="count" />,
-            ])}
+            ]
+              // One row by volume, one by number of moves.
+              .flatMap(({ name, items }) => [
+                { name, items, measure: "volume" as const },
+                { name, items, measure: "count" as const },
+              ])
+              .sort((a, b) => (a.measure === b.measure ? 0 : a.measure === "volume" ? -1 : 1))
+              .map(({ name, items, measure }) => (
+                <Breakdown
+                  key={`${name}-${measure}`}
+                  title={`${name} by ${measure === "volume" ? "volume" : "moves"}`}
+                  items={items}
+                  measure={measure}
+                />
+              ))}
           </div>
           <Recent intents={data.recent} />
         </>

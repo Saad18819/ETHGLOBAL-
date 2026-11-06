@@ -52,7 +52,7 @@
 
 .cards {
   display: grid;
-  grid-template-columns: repeat(2, minmax(0, 1fr));
+  grid-template-columns: repeat(3, minmax(0, 1fr));
   gap: 12px;
   margin-top: 24px;
 }
@@ -73,15 +73,15 @@
 /* The chart takes three quarters of the card, the legend the rest. */
 .cardBody {
   display: grid;
-  grid-template-columns: 3fr 1fr;
-  gap: 20px;
+  grid-template-columns: 3fr 2fr;
+  gap: 12px;
   align-items: center;
 }
 
 .ring {
   display: block;
   width: 100%;
-  max-width: 168px;
+  max-width: 150px;
   aspect-ratio: 1;
   margin: 0 auto;
   overflow: visible;
@@ -116,7 +116,7 @@
   margin: 0;
   padding: 0;
   list-style: none;
-  font-size: 15px;
+  font-size: 14px;
 }
 
 .legend li {
@@ -230,7 +230,13 @@
   color: var(--faint);
 }
 
-@media (max-width: 860px) {
+@media (max-width: 1000px) {
+  .cards {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}
+
+@media (max-width: 640px) {
   .cards {
     grid-template-columns: 1fr;
   }
