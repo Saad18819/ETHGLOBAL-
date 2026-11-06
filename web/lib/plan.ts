@@ -1,11 +1,15 @@
-import { sources, type SourceId } from "./chains";
+import { sourceIds, sources, type SourceId } from "./chains";
+import { tokenBySymbol, tokens, type Token } from "./tokens";
 
 export type { SourceId } from "./chains";
 
-export type AssetId = "USDC" | "EURC" | "ETH" | "WETH" | "cirBTC";
+/// A token symbol from the registry in lib/tokens.ts.
+export type AssetId = string;
 export type NextId = "pay" | "hold" | "pool" | "lend" | "loop";
-export type PayToken = "USDC" | "EURC" | "cirBTC";
-export type HoldToken = "USDC" | "EURC" | "cirBTC" | "WETH";
+/// Assets Circle Swap can swap into on Arc, so they can be paid or held whatever was moved.
+export const arcSwappable = ["USDC", "EURC", "cirBTC", "WETH"] as const;
+export type PayToken = (typeof arcSwappable)[number];
+export type HoldToken = string;
 export type Range = "full" | "20" | "5" | "1";
 export type Speed = "fast" | "standard";
 
@@ -44,14 +48,32 @@ export const defaultPlan: Plan = {
   to: "",
 };
 
-export const assets: Record<AssetId, { decimals: number; sources: SourceId[]; example: string }> = {
-  USDC: { decimals: 6, sources: Object.keys(sources) as SourceId[], example: "10" },
-  // CCTP for non-USDC routes from the Iris token list
-  EURC: { decimals: 6, sources: ["base", "ethereum", "avalanche"], example: "10" },
-  ETH: { decimals: 18, sources: ["ethereum"], example: "0.01" },
-  WETH: { decimals: 18, sources: ["ethereum"], example: "0.01" },
-  cirBTC: { decimals: 8, sources: ["ethereum"], example: "0.001" },
+const examples: Record<Token["kind"], string> = {
+  stable: "10",
+  eth: "0.005",
+  btc: "0.0002",
+  gold: "0.005",
+  defi: "1",
+  l2: "20",
 };
+
+/// Every registry token with the chains it can leave from, in the order the chain picker shows them.
+export const assets: Record<AssetId, { decimals: number; sources: SourceId[]; example: string; token: Token }> =
+  Object.fromEntries(
+    tokens.map((token) => [
+      token.symbol,
+      {
+        decimals: token.decimals,
+        sources: sourceIds.filter((id) => token.sources[id]),
+        example: examples[token.kind],
+        token,
+      },
+    ]),
+  );
+
+/// Whether Circle bridges this asset from this chain to Arc as itself.
+export const bridgesNatively = (asset: AssetId, from: SourceId) =>
+  Boolean(tokenBySymbol[asset]?.bridge.includes(from));
 
 export const ranges: Record<Range, string> = {
   full: "full range",
@@ -60,9 +82,14 @@ export const ranges: Record<Range, string> = {
   "1": "within 1%",
 };
 
-/// ETH and WETH go through Uniswap on Ethereum into USDC first, unless WETH is just being moved as is.
-export function viaUniswap(plan: Pick<Plan, "asset" | "next" | "hold">): boolean {
-  return plan.asset === "ETH" || (plan.asset === "WETH" && !(plan.next === "hold" && plan.hold === "WETH"));
+/// Where the swap happens follows the liquidity. An asset Circle bridges natively goes to Arc as itself when
+/// it is held as is or when Arc can swap it; anything else is swapped into USDC on the source chain with
+/// Uniswap first, where its liquidity is.
+export function viaUniswap(plan: Pick<Plan, "asset" | "from" | "next" | "hold">): boolean {
+  if (plan.asset === "USDC") return false;
+  if (!bridgesNatively(plan.asset, plan.from)) return true;
+  const holdsItself = plan.next === "hold" && plan.hold === plan.asset;
+  return !(holdsItself || tokenBySymbol[plan.asset].arcSwap);
 }
 
 /// The asset that leaves the source chain.
@@ -82,7 +109,7 @@ export function routeOf(plan: Plan): Route | undefined {
     Boolean(sources[plan.from].router?.address) &&
     routerActions.includes(plan.next) &&
     !(plan.next === "hold" && plan.hold !== "EURC" && plan.hold !== "USDC") &&
-    !(plan.next === "pay" && plan.payToken === "cirBTC");
+    !(plan.next === "pay" && plan.payToken !== "USDC" && plan.payToken !== "EURC");
   if (routerFits) return "router";
   return walletActions.includes(plan.next) ? "wallet" : undefined;
 }
@@ -98,13 +125,13 @@ export const nextSteps: NextStep[] = [
   {
     id: "pay",
     title: "Pay someone",
-    body: "They get the exact amount on Arc, in USDC or EURC, tagged with your invoice id.",
+    body: "They get the exact amount on Arc, tagged with your invoice id, whatever you moved.",
     verb: "pay",
   },
   {
     id: "hold",
     title: "Hold on Arc",
-    body: "Land it as USDC, EURC or cirBTC, swapped on arrival when needed, or keep what you moved.",
+    body: "Land it as USDC, EURC, cirBTC or WETH, swapped where the liquidity is, or keep what you moved.",
     verb: "hold it as",
   },
   {
@@ -131,13 +158,15 @@ export const stepOf = (id: NextId) => nextSteps.find((s) => s.id === id)!;
 
 /// Keeps a plan valid after one field changes.
 export function normalizePlan(plan: Plan): Plan {
-  const from = assets[plan.asset].sources.includes(plan.from) ? plan.from : assets[plan.asset].sources[0];
-  const hold = holdOptions(plan.asset).includes(plan.hold) ? plan.hold : "USDC";
-  return { ...plan, from, hold };
+  const asset = assets[plan.asset] ? plan.asset : "USDC";
+  const from = assets[asset].sources.includes(plan.from) ? plan.from : assets[asset].sources[0];
+  const hold = holdOptions(asset, from).includes(plan.hold) ? plan.hold : "USDC";
+  return { ...plan, asset, from, hold };
 }
 
-/// What the funds can be held as on Arc: the stable and BTC routes Circle Swap has there, plus WETH when
-/// WETH itself is moved (it has no swap route on Arc testnet).
-export function holdOptions(asset: AssetId): HoldToken[] {
-  return asset === "WETH" ? ["USDC", "EURC", "cirBTC", "WETH"] : ["USDC", "EURC", "cirBTC"];
+/// What the funds can be held as on Arc: whatever Circle Swap can swap into there, plus the moved asset
+/// itself when Circle bridges it natively.
+export function holdOptions(asset: AssetId, from: SourceId): HoldToken[] {
+  const own = bridgesNatively(asset, from) && !(arcSwappable as readonly string[]).includes(asset) ? [asset] : [];
+  return [...arcSwappable, ...own];
 }

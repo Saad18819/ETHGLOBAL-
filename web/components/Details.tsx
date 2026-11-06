@@ -3,9 +3,9 @@
 import type { ReactNode } from "react";
 
 import styles from "./Details.module.css";
-import { arrival } from "@/lib/chains";
 import type { CctpFees } from "@/lib/flows";
-import { feeLabel, type EthQuote } from "@/lib/uniswap";
+import { arrival, sources } from "@/lib/chains";
+import type { SourceQuote } from "@/lib/uniswap";
 import { feeApr, percent, usd, type Markets } from "@/lib/markets";
 import { liquidationDrop, loopRounds, MAX_LEVERAGE } from "@/lib/loop";
 import { bridgedAsset, ranges, routeOf, type Plan } from "@/lib/plan";
@@ -27,7 +27,7 @@ export function Details({
   markets?: Markets;
   pool?: PoolStats;
   fees?: CctpFees;
-  sourceQuote?: EthQuote;
+  sourceQuote?: SourceQuote;
 }) {
   // After a Uniswap source swap, everything downstream works with the USDC it produced.
   const usdcOut = sourceQuote ? Number(sourceQuote.amountOut) / 1e6 : undefined;
@@ -37,19 +37,18 @@ export function Details({
   const rows: Row[] = [];
 
   if (sourceQuote && usdcOut !== undefined) {
-    rows.push([
-      "Uniswap on Ethereum",
-      `${plan.amount} ${plan.asset} to about ${usdcOut.toFixed(2)} USDC, best price in the ${feeLabel(sourceQuote.fee)} pool`,
-    ]);
-    if (sourceQuote.deviation !== undefined && Math.abs(sourceQuote.deviation) > 0.1) {
+    const via = sourceQuote.pools ? ` through ${sourceQuote.pools} pools` : "";
+    rows.push([`Uniswap on ${sources[plan.from].label}`, `${plan.amount} ${plan.asset} to about ${usdcOut.toFixed(2)} USDC${via}`]);
+    const impact = sourceQuote.priceImpact;
+    if (impact !== undefined && impact > 1) {
       rows.push([
-        "Pool price",
-        <span key="dev" className={styles.caution}>
-          This testnet pool prices ETH at {usd(sourceQuote.impliedPrice)}, {(sourceQuote.deviation + 1).toFixed(1)}x the
-          market. On mainnet the same route meets real liquidity.
+        "Price impact",
+        <span key="impact" className={styles.caution}>
+          {impact.toFixed(2)}%, try a smaller amount
         </span>,
       ]);
     }
+    if (sourceQuote.gasUsd !== undefined) rows.push(["Swap gas", usd(sourceQuote.gasUsd)]);
   }
   rows.push(["Arrives", arrival(fast)]);
   if ((plan.asset === "USDC" || usdcOut !== undefined) && fees) {

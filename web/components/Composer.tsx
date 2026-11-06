@@ -2,10 +2,8 @@
 
 import { useState } from "react";
 import { useQuery } from "@tanstack/react-query";
-import { formatUnits, parseEther, parseUnits, type Address, type Hex } from "viem";
+import { formatUnits, parseUnits, type Address, type Hex } from "viem";
 import { useConnect, useConnection } from "wagmi";
-import { switchChain } from "wagmi/actions";
-import { sepolia } from "wagmi/chains";
 import { injected } from "wagmi/connectors";
 
 import styles from "./Composer.module.css";
@@ -15,15 +13,13 @@ import { Options } from "./Options";
 import { Sentence } from "./Sentence";
 import { RouterTracker, Steps } from "./Tracker";
 import { sources } from "@/lib/chains";
-import { arc } from "@/lib/contracts";
 import { cctpFees, resolveRecipient, sendThroughRouter, sendThroughWallet, type RouterResult } from "@/lib/flows";
 import { MAX_LEVERAGE } from "@/lib/loop";
 import { useBalances } from "@/lib/balances";
 import { protocolOf, protocols, swatchStyle } from "@/lib/brand";
 import { useMarkets } from "@/lib/markets";
-import { config } from "@/lib/config";
-import { bridgedAsset, defaultPlan, normalizePlan, routeOf, viaUniswap, type NextId, type Plan } from "@/lib/plan";
-import { quoteEthToUsdc, swapEthToUsdc } from "@/lib/uniswap";
+import { assets, bridgedAsset, defaultPlan, normalizePlan, routeOf, viaUniswap, type NextId, type Plan } from "@/lib/plan";
+import { quoteToUsdc, swapToUsdc } from "@/lib/uniswap";
 import { usePool } from "@/lib/quote";
 
 type Run =
@@ -67,13 +63,14 @@ export function Composer({
   const balances = useBalances(address, markets.data?.prices);
   const top = balances.data?.[0];
   const pool = usePool();
-  // The settlement contract only deposits into vaults it allowlists; Circle Earn can reach all of them.
+  // The settlement contract only deposits into the vault it allowlists; Circle Earn can reach all of them.
   const base =
     !touched && top
       ? normalizePlan({ ...draft, asset: top.asset, from: top.from, amount: spendable(top.asset, top.amount) })
       : draft;
   const vaults = (markets.data?.vaults ?? []).filter(
-    (vault) => routeOf(base) !== "router" || vault.address.toLowerCase() === arc.morphoVault.toLowerCase(),
+    (vault) =>
+      routeOf(base) !== "router" || vault.address.toLowerCase() === process.env.NEXT_PUBLIC_SETTLEMENT_VAULT?.toLowerCase(),
   );
   const vault = vaults.some((v) => v.address === base.vault) ? base.vault : (vaults[0]?.address ?? "");
   const plan = { ...base, vault };
@@ -82,11 +79,13 @@ export function Composer({
   const fees = useQuery({ queryKey: ["cctp-fee", domain], queryFn: () => cctpFees(domain), staleTime: 60_000 });
 
   const uniswap = viaUniswap(plan);
+  const amountIn = parseAmount(plan.amount, assets[plan.asset].decimals);
   const sourceQuote = useQuery({
-    queryKey: ["eth-quote", plan.amount, markets.data?.prices.ETH],
-    queryFn: () => quoteEthToUsdc(parseEther(plan.amount || "0"), markets.data?.prices.ETH),
-    enabled: uniswap && Number(plan.amount) > 0 && Boolean(markets.data),
+    queryKey: ["source-quote", plan.asset, plan.from, amountIn.toString(), plan.slippage],
+    queryFn: () => quoteToUsdc(plan.asset, plan.from, amountIn, Number(plan.slippage), address),
+    enabled: uniswap && amountIn > 0n,
     staleTime: 30_000,
+    retry: false,
   });
   const route = routeOf(plan);
   // What arrives as USDC when the source leg goes through Uniswap.
@@ -102,8 +101,8 @@ export function Composer({
     plan.next === "lend" ||
     (plan.next === "pay" && plan.payToken !== plan.asset);
   const blocker =
-    uniswap && sourceQuote.isFetched && !sourceQuote.data
-      ? "No Uniswap route from ETH to USDC on Ethereum right now"
+    uniswap && sourceQuote.error
+      ? `No Uniswap quote from ${plan.asset} to USDC on ${sources[plan.from].label}: ${sourceQuote.error.message}`
       : findBlocker(plan, route, amount, pool.data?.rate, slippage);
 
   async function go() {
@@ -116,12 +115,8 @@ export function Composer({
         plan.next === "pay" ? await resolveRecipient(plan.recipient) : plan.to ? await resolveRecipient(plan.to) : address;
       let effective = plan;
       if (uniswap) {
-        await switchChain(config, { chainId: sepolia.id });
-        const amountIn = parseEther(plan.amount);
-        const quote = await quoteEthToUsdc(amountIn, markets.data?.prices.ETH);
-        if (!quote) throw new Error("No Uniswap route from ETH to USDC right now");
-        const { usdc } = await swapEthToUsdc(
-          { account: address, amountIn, quote, slippage: Number(plan.slippage) / 100, fromWeth: plan.asset === "WETH" },
+        const { usdc } = await swapToUsdc(
+          { account: address, asset: plan.asset, from: plan.from, amountIn, slippage: Number(plan.slippage) },
           setStatus,
         );
         effective = { ...plan, asset: "USDC", amount: formatUnits(usdc, 6) };
@@ -283,4 +278,12 @@ function readable(cause: unknown): string {
   if (cause && typeof cause === "object" && "shortMessage" in cause) return String(cause.shortMessage);
   if (cause instanceof Error) return cause.message.split("\n")[0];
   return "Something went wrong";
+}
+
+function parseAmount(amount: string, decimals: number) {
+  try {
+    return parseUnits(amount || "0", decimals);
+  } catch {
+    return 0n;
+  }
 }

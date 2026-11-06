@@ -1,39 +1,27 @@
 import { parseAbi, type Address } from "viem";
-import { arcTestnet, baseSepolia, sepolia } from "wagmi/chains";
+import { arc as arcChain, base as baseChain } from "wagmi/chains";
 
 export const deployed = {
   settlement: process.env.NEXT_PUBLIC_SETTLEMENT as Address | undefined,
-  // Invoices live on Base Sepolia
+  // Invoices live on Base
   invoices: process.env.NEXT_PUBLIC_INVOICES as Address | undefined,
 };
 
+/// Arc mainnet, from docs.arc.io/arc/references/contract-addresses.
 export const arc = {
-  chainId: arcTestnet.id,
+  chainId: arcChain.id,
   usdc: "0x3600000000000000000000000000000000000000",
-  eurc: "0x89B50855Aa3bE2F677cD6303Cec089B5F319D72a",
-  weth: "0x2c4047028a72803939b6fb674D01bC059B5C4961",
-  cirbtc: "0xf0C4a4CE82A5746AbAAd9425360Ab04fbBA432BF",
+  eurc: "0xbEf5f6d51CB62b58e6A8f77868681825C6fe21c1",
+  weth: "0x128cC466B61f542da60c70e3aA11c10e19B84EDB",
+  cirbtc: "0x171A4217b86A807A64eB94757Db6849fb4bDbAA0",
   memo: "0x5294E9927c3306DcBaDb03fe70b92e01cCede505",
-  // Morpho USDC vault listed by Circle Earn, allowlisted in the settlement contract
-  morphoVault: "0x8f2D33B5D4B9B5F02DF635AE308F7B4C9dA8D2DC",
-  // Morpho cirBTC/USDC market listed by Circle Borrow
-  cirbtcMarket: "0xf8a71f6df9dc7725d1c2fd848e4635d1e9ddca11da4e2dc2f9801005bd2b5d58",
-  explorer: "https://explorer.testnet.arc.io",
+  explorer: "https://explorer.arc.io",
 } as const;
 
 export const base = {
-  chainId: baseSepolia.id,
-  usdc: "0x036CbD53842c5426634e7929541eC2318f3dCF7e",
-  eurc: "0x808456652fdb597867f38412077A9182bf77359F",
+  chainId: baseChain.id,
   cctpDomain: 6,
-  explorer: "https://sepolia.basescan.org",
-} as const;
-
-export const ethereum = {
-  chainId: sepolia.id,
-  weth: "0xfFf9976782d46CC05630D1f6eBAB18b2324d6B14",
-  cirbtc: "0x3a3fe695f684bf9b9e43cf43c2b895ea5e392bb3",
-  explorer: "https://sepolia.etherscan.io",
+  explorer: "https://basescan.org",
 } as const;
 
 const intent =

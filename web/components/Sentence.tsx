@@ -5,7 +5,7 @@ import styles from "./Sentence.module.css";
 import { sources } from "@/lib/chains";
 import { liquidationDrop, MAX_LEVERAGE } from "@/lib/loop";
 import { holdingOf, short, type Holding } from "@/lib/balances";
-import { protocolOf, protocols, tokenColors } from "@/lib/brand";
+import { protocolOf, protocols, tokenColor } from "@/lib/brand";
 import { percent, usd, type Vault } from "@/lib/markets";
 import {
   assets,
@@ -43,7 +43,7 @@ export function Sentence({
   const totalOf = (asset: AssetId) =>
     holdings?.filter((h) => h.asset === asset).reduce((sum, h) => sum + Number(h.amount), 0) ?? 0;
   const held = holdingOf(holdings, plan.asset, plan.from);
-  const token = tokenColors[plan.asset];
+  const token = tokenColor(plan.asset);
   const brand = protocols[protocolOf[plan.next]];
   const set = (patch: Partial<Plan>) => onChange(normalizePlan({ ...plan, ...patch }));
   const viaRouter = routeOf(plan) === "router";
@@ -69,7 +69,7 @@ export function Sentence({
           hint: totalOf(id) > 0 ? short(String(totalOf(id))) : undefined,
         }))}
         onChange={(asset) =>
-          set({ asset, amount: assets[asset].example, payAmount: asset === "USDC" || asset === "EURC" ? "9" : "10" })
+          set({ asset, amount: assets[asset].example, payAmount: assets[asset].token.kind === "stable" ? "9" : "8" })
         }
       />{" "}
       from{" "}
@@ -102,9 +102,9 @@ export function Sentence({
           {" "}
           <Select<HoldToken>
             label="Hold as"
-            swatch={tokenColors[plan.hold]}
+            swatch={tokenColor(plan.hold)}
             value={plan.hold}
-            options={holdOptions(plan.asset).map((token) => ({
+            options={holdOptions(plan.asset, plan.from).map((token) => ({
               value: token,
               label: token,
               hint: token === bridgedAsset(plan) ? "no swap" : undefined,
@@ -180,7 +180,7 @@ export function Sentence({
             />
           )}{" "}
           {locked ? (
-            <Fixed swatch={tokenColors[plan.payToken]}>
+            <Fixed swatch={tokenColor(plan.payToken)}>
               {plan.payAmount} {plan.payToken}
             </Fixed>
           ) : (
@@ -190,11 +190,11 @@ export function Sentence({
                 numeric
                 value={plan.payAmount}
                 onChange={(payAmount) => set({ payAmount })}
-                swatch={tokenColors[plan.payToken]}
+                swatch={tokenColor(plan.payToken)}
               />{" "}
               <Select<PayToken>
                 label="Pay in"
-                swatch={tokenColors[plan.payToken]}
+                swatch={tokenColor(plan.payToken)}
                 value={plan.payToken}
                 options={(viaRouter ? (["USDC", "EURC"] as const) : (["USDC", "EURC", "cirBTC"] as const)).map(
                   (token) => ({ value: token, label: token }),

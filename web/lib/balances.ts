@@ -7,6 +7,7 @@ import { config, type ChainId } from "./config";
 import { erc20Abi } from "./contracts";
 import type { Markets } from "./markets";
 import { assets, type AssetId } from "./plan";
+import { tokens } from "./tokens";
 
 export type Holding = { asset: AssetId; from: SourceId; amount: string; usd: number };
 
@@ -18,7 +19,7 @@ export function useBalances(account: Address | undefined, prices: Markets["price
     refetchInterval: 30_000,
     queryFn: async (): Promise<Holding[]> => {
       const entries = sourceIds.flatMap((from) =>
-        Object.entries(sources[from].tokens).map(([asset, token]) => ({ from, asset: asset as AssetId, token })),
+        tokens.flatMap((t) => (t.sources[from] ? [{ from, asset: t.symbol as AssetId, token: t.sources[from] }] : [])),
       );
 
       const erc20 = entries.filter((entry) => entry.token !== "native");

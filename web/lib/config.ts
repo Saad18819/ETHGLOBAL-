@@ -1,30 +1,10 @@
 import { createConfig, http } from "wagmi";
-import {
-  arbitrumSepolia,
-  arcTestnet,
-  avalancheFuji,
-  baseSepolia,
-  mainnet,
-  optimismSepolia,
-  polygonAmoy,
-  sepolia,
-  unichainSepolia,
-} from "wagmi/chains";
+import { arbitrum, arc, avalanche, base, mainnet, optimism, polygon, unichain } from "wagmi/chains";
 import { injected } from "wagmi/connectors";
 
-export const ARC_RPC = "https://rpc.testnet.arc.network";
+export const ARC_RPC = "https://rpc.mainnet.arc.io";
 
-const chains = [
-  arcTestnet,
-  baseSepolia,
-  sepolia,
-  polygonAmoy,
-  arbitrumSepolia,
-  optimismSepolia,
-  avalancheFuji,
-  unichainSepolia,
-  mainnet,
-] as const;
+const chains = [arc, base, mainnet, arbitrum, optimism, polygon, avalanche, unichain] as const;
 
 export function getConfig() {
   return createConfig({
@@ -32,15 +12,14 @@ export function getConfig() {
     connectors: [injected()],
     ssr: true,
     transports: {
-      [arcTestnet.id]: http(ARC_RPC),
-      [baseSepolia.id]: http(),
-      [sepolia.id]: http("https://ethereum-sepolia-rpc.publicnode.com"),
-      [polygonAmoy.id]: http("https://polygon-amoy-bor-rpc.publicnode.com"),
-      [arbitrumSepolia.id]: http(),
-      [optimismSepolia.id]: http(),
-      [avalancheFuji.id]: http(),
-      [unichainSepolia.id]: http(),
-      [mainnet.id]: http(),
+      [arc.id]: http(ARC_RPC),
+      [base.id]: http(),
+      [mainnet.id]: http("https://ethereum-rpc.publicnode.com"),
+      [arbitrum.id]: http(),
+      [optimism.id]: http(),
+      [polygon.id]: http("https://polygon-bor-rpc.publicnode.com"),
+      [avalanche.id]: http(),
+      [unichain.id]: http(),
     },
   });
 }
