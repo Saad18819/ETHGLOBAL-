@@ -93,6 +93,9 @@ export function Composer({
     reached.current = later(reached.current, phaseOf(label));
     setJourney((current) => current && { ...current, phase: later(current.phase, phaseOf(label)) });
   };
+  // A move through our contracts reports how far its order on Arc got.
+  const onProgress = (phase: Phase, failed: boolean) =>
+    setJourney((current) => current && { ...current, phase: later(current.phase, phase), failed });
   const reset = () => {
     setDone(undefined);
     setRun(undefined);
@@ -270,10 +273,10 @@ export function Composer({
 
       if (routeOf(effective) === "router") {
         const result = await sendThroughRouter(context, report);
-        // From here the order tracker follows the bridge and the settlement on Arc.
-        setJourney(undefined);
+        // From here the order on Arc drives the progress row.
+        setJourney((current) => current && { ...current, phase: later(current.phase, "bridge") });
         setRun({ kind: "router", outcome: outcomes[plan.next].replace("{recipient}", plan.recipient), ...result });
-        setDone("Sent. The order tracker below follows it to Arc.");
+        setDone("Sent, on its way to Arc.");
         record(address, {
           purpose: plan.next,
           summary: describe(plan),
@@ -391,7 +394,13 @@ export function Composer({
               >
                 Move more
               </button>
-              <span className={styles.success}>{done}</span>
+              <span className={styles.success}>
+                {run?.kind === "router" && journey?.failed
+                  ? "Could not finish, refunded on Arc."
+                  : run?.kind === "router" && journey?.phase === "done"
+                    ? `${run.outcome}.`
+                    : done}
+              </span>
             </>
           ) : (
             <button
@@ -409,7 +418,9 @@ export function Composer({
             !busy && !done && blocker && <span className={styles.warning}>{blocker}</span>
           )}
         </div>
-        {journey && <Journey plan={journey.plan} phase={journey.phase} failed={journey.failed} />}
+        {journey && (
+          <Journey plan={journey.plan} phase={journey.phase} failed={journey.failed} receipt={Boolean(invoiceId)} />
+        )}
         {error && (
           <p className={styles.error}>
             {error}
@@ -432,8 +443,8 @@ export function Composer({
               explorer={run.explorer}
               source={sources[plan.from].label}
               domain={sources[plan.from].cctpDomain}
-              outcome={run.outcome}
               invoiceId={invoiceId}
+              onProgress={onProgress}
             />
           </div>
         )}

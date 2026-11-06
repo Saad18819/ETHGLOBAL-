@@ -1,15 +1,14 @@
 "use client";
 
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useEffectEvent, useRef, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { readContract, switchChain, waitForTransactionReceipt, writeContract } from "wagmi/actions";
 import type { Hex } from "viem";
 
 import styles from "./Tracker.module.css";
+import type { Phase } from "./Journey";
 import { config } from "@/lib/config";
 import { arc, base, deployed, invoiceAbi, settlementAbi } from "@/lib/contracts";
-
-type State = "done" | "active" | "waiting" | "failed";
 
 const OPEN = 0;
 const SETTLED = 1;
@@ -20,16 +19,16 @@ export function RouterTracker({
   explorer,
   source,
   domain,
-  outcome,
   invoiceId,
+  onProgress,
 }: {
   orderKey: Hex;
   txHash: Hex;
   explorer: string;
   source: string;
   domain: number;
-  outcome: string;
   invoiceId?: Hex;
+  onProgress: (phase: Phase, failed: boolean) => void;
 }) {
   const order = useQuery({
     queryKey: ["order", orderKey],
@@ -128,51 +127,47 @@ export function RouterTracker({
   });
 
   const intentArrived = Boolean(order.data?.hasIntent);
-  const steps: { label: string; detail?: string; state: State; href?: string }[] = [
-    {
-      label: `Sent from ${source}`,
-      detail: "USDC burned over CCTP, instruction sent over CCIP",
-      state: "done",
-      href: `${explorer}/tx/${txHash}`,
-    },
-    {
-      label: "Instruction reached Arc",
-      detail: "Delivered by Chainlink CCIP",
-      state: intentArrived ? "done" : "active",
-      href: `https://ccip.chain.link/tx/${txHash}`,
-    },
-    {
-      label: "USDC arrived on Arc",
-      detail:
-        relay.data?.error ??
-        (selfDeliver
-          ? attestation.data?.state === "attested"
-            ? delivering
-              ? "Confirm the delivery on Arc in your wallet"
-              : "Attested by Circle, delivered from your wallet"
-            : "Waiting for Circle to attest the burn"
-          : "Minted by Circle CCTP"),
-      state: funded ? "done" : "active",
-      href: (relay.data?.hash ?? delivered) ? `${arc.explorer}/tx/${relay.data?.hash ?? delivered}` : undefined,
-    },
-    {
-      label: failed ? "Could not finish, refunded on Arc" : outcome,
-      state: failed ? "failed" : settled ? "done" : intentArrived && funded ? "active" : "waiting",
-      href: `${arc.explorer}/address/${deployed.settlement}`,
-    },
-  ];
-  if (invoiceId) {
-    steps.push({
-      label: "Invoice unlocked on Base",
-      detail: "Receipt sent back over CCIP",
-      state: paid.data ? "done" : settled ? "active" : "waiting",
-      href: `https://ccip.chain.link/address/${deployed.settlement}`,
-    });
-  }
+  // Where the move is, for the progress row above: the bridge until both the USDC and the instruction are
+  // on Arc, then the action, then the receipt back to the invoice.
+  const phase: Phase = !(intentArrived && funded)
+    ? "bridge"
+    : !settled
+      ? "action"
+      : invoiceId && !paid.data
+        ? "receipt"
+        : "done";
+  const report = useEffectEvent(onProgress);
+  useEffect(() => report(phase, failed), [phase, failed]);
+
+  const note = failed
+    ? "Could not finish, refunded on Arc"
+    : (relay.data?.error ??
+      (delivering
+        ? "Confirm the delivery on Arc in your wallet"
+        : !intentArrived
+          ? "Waiting for the instruction over Chainlink CCIP"
+          : !funded
+            ? "Waiting for Circle to attest the USDC"
+            : phase === "receipt"
+              ? "Paid on Arc, sending the receipt to Base over Chainlink CCIP"
+              : undefined));
 
   return (
-    <>
-      <Steps steps={steps} />
+    <div className={styles.tracker}>
+      {note && <p className={failed ? styles.error : styles.note}>{note}</p>}
+      <p className={styles.links}>
+        <a href={`${explorer}/tx/${txHash}`} target="_blank" rel="noreferrer">
+          {source} transaction
+        </a>
+        <a href={`https://ccip.chain.link/tx/${txHash}`} target="_blank" rel="noreferrer">
+          CCIP message
+        </a>
+        {(relay.data?.hash ?? delivered) && (
+          <a href={`${arc.explorer}/tx/${relay.data?.hash ?? delivered}`} target="_blank" rel="noreferrer">
+            Arc delivery
+          </a>
+        )}
+      </p>
       {/* Only shown when the automatic delivery did not go through, to try it again. */}
       {deliverError && !delivered && (
         <button className={styles.deliver} disabled={delivering} onClick={deliver}>
@@ -180,28 +175,6 @@ export function RouterTracker({
         </button>
       )}
       {deliverError && <p className={styles.error}>{deliverError}</p>}
-    </>
-  );
-}
-
-export function Steps({ steps }: { steps: { label: string; detail?: string; state: State; href?: string }[] }) {
-  return (
-    <ol className={styles.steps}>
-      {steps.map((step) => (
-        <li key={step.label} className={styles.step} data-state={step.state}>
-          <span className={styles.marker} />
-          <span className={styles.text}>
-            {step.href ? (
-              <a href={step.href} target="_blank" rel="noreferrer">
-                {step.label}
-              </a>
-            ) : (
-              step.label
-            )}
-            {step.detail && <span className={styles.detail}>{step.detail}</span>}
-          </span>
-        </li>
-      ))}
-    </ol>
+    </div>
   );
 }

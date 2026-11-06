@@ -1,72 +1,29 @@
-.steps {
+.tracker {
   display: grid;
-  gap: 14px;
+  gap: 8px;
+}
+
+.note {
   margin: 0;
-  padding: 0;
-  list-style: none;
-}
-
-.step {
-  display: flex;
-  gap: 12px;
-  align-items: flex-start;
-  font-size: 15px;
-}
-
-.marker {
-  flex: none;
-  width: 10px;
-  height: 10px;
-  margin-top: 6px;
-  border-radius: 50%;
-  border: 1.5px solid var(--faint);
-}
-
-.step[data-state="done"] .marker {
-  background: var(--green-ink);
-  border-color: var(--green-ink);
-}
-
-.step[data-state="active"] .marker {
-  border-color: var(--ink);
-  animation: pulse 1.4s ease-in-out infinite;
-}
-
-.step[data-state="failed"] .marker {
-  background: var(--red-ink);
-  border-color: var(--red-ink);
-}
-
-.step[data-state="waiting"] .text {
-  color: var(--faint);
-}
-
-.text {
-  display: grid;
-  gap: 2px;
-}
-
-.text a {
-  text-decoration: none;
-}
-
-.text a:hover {
-  text-decoration: underline;
-}
-
-.detail {
-  font-size: 13px;
+  font-size: 14px;
   color: var(--muted);
 }
 
-@keyframes pulse {
-  50% {
-    opacity: 0.35;
-  }
+.links {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 16px;
+  margin: 0;
+  font-size: 13px;
+}
+
+.links a {
+  color: var(--muted);
 }
 
 .deliver {
-  margin-top: 16px;
+  justify-self: start;
+  margin-top: 8px;
   padding: 10px 20px;
   border: none;
   border-radius: 999px;
@@ -81,7 +38,7 @@
 }
 
 .error {
-  margin: 12px 0 0;
+  margin: 0;
   color: var(--red-ink);
   font-size: 14px;
 }
