@@ -1,0 +1,77 @@
+.panel {
+  width: 100%;
+}
+
+.title {
+  margin: 0 0 14px;
+  font-size: 14px;
+  font-weight: 500;
+  color: var(--muted);
+}
+
+.list {
+  display: grid;
+  gap: 8px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.card {
+  display: grid;
+  gap: 3px;
+  width: 100%;
+  padding: 14px 16px;
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  background: var(--surface);
+  text-align: left;
+  transition: border-color 120ms ease;
+}
+
+.card:hover:not(:disabled) {
+  border-color: var(--faint);
+}
+
+.card[data-active="true"] {
+  border-color: var(--ink);
+}
+
+.card:disabled {
+  background: transparent;
+}
+
+.card:disabled .cardTitle,
+.card:disabled .cardBody {
+  color: var(--faint);
+}
+
+.cardTitle {
+  font-size: 15px;
+  font-weight: 500;
+}
+
+.cardBody {
+  font-size: 13px;
+  line-height: 1.45;
+  color: var(--muted);
+}
+
+.note {
+  margin-top: 4px;
+  font-size: 12px;
+  color: var(--sand-ink);
+}
+
+.cardHead {
+  display: flex;
+  justify-content: space-between;
+  align-items: baseline;
+  gap: 12px;
+}
+
+.stat {
+  font-size: 12px;
+  color: var(--green-ink);
+  white-space: nowrap;
+}

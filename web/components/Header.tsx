@@ -1,0 +1,37 @@
+"use client";
+
+import Link from "next/link";
+import { useConnect, useConnection, useDisconnect } from "wagmi";
+import { injected } from "wagmi/connectors";
+
+import styles from "./Header.module.css";
+
+export function Header() {
+  const { address, isConnected } = useConnection();
+  const connect = useConnect();
+  const disconnect = useDisconnect();
+
+  return (
+    <header className={styles.header}>
+      <Link href="/" className={styles.mark}>
+        andthen
+      </Link>
+      <nav className={styles.nav}>
+        <Link href="/">Move</Link>
+        <Link href="/invoice">Request a payment</Link>
+      </nav>
+      {isConnected && address ? (
+        <button className={styles.wallet} onClick={() => disconnect.mutate()} title="Disconnect">
+          <span className={styles.dot} />
+          <span className="mono">
+            {address.slice(0, 6)}…{address.slice(-4)}
+          </span>
+        </button>
+      ) : (
+        <button className={styles.wallet} onClick={() => connect.mutate({ connector: injected() })}>
+          Connect wallet
+        </button>
+      )}
+    </header>
+  );
+}
