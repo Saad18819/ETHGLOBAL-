@@ -4,6 +4,7 @@ import { encodeAbiParameters, keccak256, toEventSelector, zeroAddress } from "vi
 
 import type { Markets } from "@/lib/markets";
 import { poolStats, type PoolSpec } from "@/lib/mainnet";
+import { arc as arcContracts } from "@/lib/contracts";
 
 const kit = new AppKit();
 
@@ -99,13 +100,14 @@ async function mainnet(prices: Record<string, number>): Promise<Markets["mainnet
   return data;
 }
 
-/// Live Earn vaults, Borrow markets, USD prices and pool volume for Arc testnet.
+/// Live Earn vaults and Borrow markets on the Arc network transactions run on, USD prices, testnet pool volume
+/// and the mainnet reference numbers.
 export async function GET() {
   if (cached && Date.now() - cached.at < TTL) return Response.json(cached.data);
 
   const [vaults, markets, arcRates, ethRates, pool] = await Promise.all([
-    kit.earn.exploreVaults({ chain: "Arc_Testnet", pageSize: 100, sortBy: "apy" }),
-    kit.borrow.exploreMarkets({ chain: "Arc_Testnet" }),
+    kit.earn.exploreVaults({ chain: arcContracts.kitChain as "Arc_Testnet", pageSize: 100, sortBy: "apy" }),
+    kit.borrow.exploreMarkets({ chain: arcContracts.kitChain as "Arc_Testnet" }),
     kit.getTokenRates({ chain: "Arc_Testnet", tokens: ["USDC", "EURC"] }),
     kit.getTokenRates({ chain: "Ethereum", tokens: ["WETH", "WBTC"] }),
     poolVolume().catch(() => ({ volume7d: 0, swaps7d: 0 })),

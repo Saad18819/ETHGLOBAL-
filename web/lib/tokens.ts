@@ -1,6 +1,7 @@
 import type { Address } from "viem";
 
 import type { SourceId } from "./chains";
+import { isTestnet } from "./network";
 
 /// Mainnet tokens the app can move. Generated from three official sources:
 /// tokens.uniswap.org (addresses and decimals on each source chain), Circle's CCTP token list
@@ -23,7 +24,7 @@ export type Token = {
   bridge: SourceId[];
 };
 
-export const tokens: Token[] = [
+const mainnetTokens: Token[] = [
   {
     symbol: "USDC",
     name: "USD Coin",
@@ -416,7 +417,75 @@ export const tokens: Token[] = [
   }
 ];
 
-export type TokenId = (typeof tokens)[number]["symbol"];
+/// What runs end to end on testnet: Circle's testnet USDC and EURC everywhere they exist, and the ether and
+/// BTC routes on Sepolia (ETH through Uniswap there, WETH and cirBTC bridged by CCTP for non-USDC).
+/// Addresses from developers.circle.com/stablecoins and docs.arc.io.
+const testnetTokens: Token[] = [
+  {
+    symbol: "USDC",
+    name: "USD Coin",
+    kind: "stable",
+    decimals: 6,
+    sources: {
+      base: "0x036CbD53842c5426634e7929541eC2318f3dCF7e",
+      ethereum: "0x1c7D4B196Cb0C7B01d743Fbc6116a902379C7238",
+      polygon: "0x41E94Eb019C0762f9Bfcf9Fb1E58725BfB0e7582",
+      arbitrum: "0x75faf114eafb1BDbe2F0316DF893fd58CE46AA4d",
+      optimism: "0x5fd84259d66Cd46123540766Be93DFE6D43130D7",
+      avalanche: "0x5425890298aed601595a70AB815c96711a31Bc65",
+      unichain: "0x31d0220469e10c4E71834a79b1f276d740d3768F",
+    },
+    arc: "0x3600000000000000000000000000000000000000",
+    arcSwap: true,
+    bridge: ["base", "ethereum", "polygon", "arbitrum", "optimism", "avalanche", "unichain"],
+  },
+  {
+    symbol: "EURC",
+    name: "Euro Coin",
+    kind: "stable",
+    decimals: 6,
+    sources: {
+      base: "0x808456652fdb597867f38412077A9182bf77359F",
+      ethereum: "0x08210F9170F89Ab7658F0B5E3fF39b0E03C594D4",
+      avalanche: "0x5E44db7996c682E92a960b65AC713a54AD815c6B",
+    },
+    arc: "0x89B50855Aa3bE2F677cD6303Cec089B5F319D72a",
+    arcSwap: true,
+    bridge: ["base", "ethereum", "avalanche"],
+  },
+  {
+    symbol: "ETH",
+    name: "Ether",
+    kind: "eth",
+    decimals: 18,
+    sources: { ethereum: "native" },
+    arcSwap: false,
+    bridge: [],
+  },
+  {
+    symbol: "WETH",
+    name: "Wrapped Ether",
+    kind: "eth",
+    decimals: 18,
+    sources: { ethereum: "0xfFf9976782d46CC05630D1f6eBAB18b2324d6B14" },
+    arc: "0x2c4047028a72803939b6fb674D01bC059B5C4961",
+    // Circle Swap has no WETH route on Arc testnet.
+    arcSwap: false,
+    bridge: ["ethereum"],
+  },
+  {
+    symbol: "cirBTC",
+    name: "Circle Wrapped Bitcoin",
+    kind: "btc",
+    decimals: 8,
+    sources: { ethereum: "0x3a3fe695f684bf9b9e43cf43c2b895ea5e392bb3" },
+    arc: "0xf0C4a4CE82A5746AbAAd9425360Ab04fbBA432BF",
+    arcSwap: true,
+    bridge: ["ethereum"],
+  },
+];
+
+export const tokens = isTestnet ? testnetTokens : mainnetTokens;
 
 export const tokenBySymbol = Object.fromEntries(tokens.map((token) => [token.symbol, token])) as Record<string, Token>;
 

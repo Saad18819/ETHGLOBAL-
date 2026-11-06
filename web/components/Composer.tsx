@@ -13,6 +13,7 @@ import { Options } from "./Options";
 import { Sentence } from "./Sentence";
 import { RouterTracker, Steps } from "./Tracker";
 import { sources } from "@/lib/chains";
+import { arc } from "@/lib/contracts";
 import { cctpFees, resolveRecipient, sendThroughRouter, sendThroughWallet, type RouterResult } from "@/lib/flows";
 import { MAX_LEVERAGE } from "@/lib/loop";
 import { useBalances } from "@/lib/balances";
@@ -70,7 +71,7 @@ export function Composer({
       : draft;
   const vaults = (markets.data?.vaults ?? []).filter(
     (vault) =>
-      routeOf(base) !== "router" || vault.address.toLowerCase() === process.env.NEXT_PUBLIC_SETTLEMENT_VAULT?.toLowerCase(),
+      routeOf(base) !== "router" || vault.address.toLowerCase() === arc.morphoVault?.toLowerCase(),
   );
   const vault = vaults.some((v) => v.address === base.vault) ? base.vault : (vaults[0]?.address ?? "");
   const plan = { ...base, vault };
@@ -81,8 +82,8 @@ export function Composer({
   const uniswap = viaUniswap(plan);
   const amountIn = parseAmount(plan.amount, assets[plan.asset].decimals);
   const sourceQuote = useQuery({
-    queryKey: ["source-quote", plan.asset, plan.from, amountIn.toString(), plan.slippage],
-    queryFn: () => quoteToUsdc(plan.asset, plan.from, amountIn, Number(plan.slippage), address),
+    queryKey: ["source-quote", plan.asset, plan.from, amountIn.toString(), plan.slippage, markets.data?.prices.ETH],
+    queryFn: () => quoteToUsdc(plan.asset, plan.from, amountIn, Number(plan.slippage), address, markets.data?.prices.ETH),
     enabled: uniswap && amountIn > 0n,
     staleTime: 30_000,
     retry: false,

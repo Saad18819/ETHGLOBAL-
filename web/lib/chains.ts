@@ -1,5 +1,22 @@
 import type { Address, Chain } from "viem";
-import { arbitrum, avalanche, base, mainnet, optimism, polygon, unichain } from "viem/chains";
+import {
+  arbitrum,
+  arbitrumSepolia,
+  avalanche,
+  avalancheFuji,
+  base,
+  baseSepolia,
+  mainnet,
+  optimism,
+  optimismSepolia,
+  polygon,
+  polygonAmoy,
+  sepolia,
+  unichain,
+  unichainSepolia,
+} from "viem/chains";
+
+import { isTestnet } from "./network";
 
 export type SourceId = "base" | "ethereum" | "polygon" | "arbitrum" | "optimism" | "avalanche" | "unichain";
 
@@ -16,7 +33,7 @@ export type Source = {
 };
 
 /// Mainnet source chains. USDC addresses from developers.circle.com/stablecoins/usdc-contract-addresses.
-export const sources: Record<SourceId, Source> = {
+const mainnetSources: Record<SourceId, Source> = {
   base: {
     label: "Base",
     chain: base,
@@ -64,6 +81,76 @@ export const sources: Record<SourceId, Source> = {
   avalanche: { label: "Avalanche", chain: avalanche, kitChain: "Avalanche", cctpDomain: 1, explorer: "https://snowtrace.io" },
   unichain: { label: "Unichain", chain: unichain, kitChain: "Unichain", cctpDomain: 10, explorer: "https://uniscan.xyz" },
 };
+
+/// The same chains' testnets, with the same Circle domains.
+const testnetSources: Record<SourceId, Source> = {
+  base: {
+    label: "Base",
+    chain: baseSepolia,
+    kitChain: "Base_Sepolia",
+    cctpDomain: 6,
+    explorer: "https://sepolia.basescan.org",
+    router: {
+      address: process.env.NEXT_PUBLIC_ROUTER_BASE as Address | undefined,
+      usdc: "0x036CbD53842c5426634e7929541eC2318f3dCF7e",
+      nativeSymbol: "ETH",
+    },
+  },
+  ethereum: {
+    label: "Ethereum",
+    chain: sepolia,
+    kitChain: "Ethereum_Sepolia",
+    cctpDomain: 0,
+    explorer: "https://sepolia.etherscan.io",
+    router: {
+      address: process.env.NEXT_PUBLIC_ROUTER_ETHEREUM as Address | undefined,
+      usdc: "0x1c7D4B196Cb0C7B01d743Fbc6116a902379C7238",
+      nativeSymbol: "ETH",
+    },
+  },
+  polygon: {
+    label: "Polygon",
+    chain: polygonAmoy,
+    kitChain: "Polygon_Amoy_Testnet",
+    cctpDomain: 7,
+    explorer: "https://amoy.polygonscan.com",
+    router: {
+      address: process.env.NEXT_PUBLIC_ROUTER_POLYGON as Address | undefined,
+      usdc: "0x41E94Eb019C0762f9Bfcf9Fb1E58725BfB0e7582",
+      nativeSymbol: "POL",
+    },
+  },
+  arbitrum: {
+    label: "Arbitrum",
+    chain: arbitrumSepolia,
+    kitChain: "Arbitrum_Sepolia",
+    cctpDomain: 3,
+    explorer: "https://sepolia.arbiscan.io",
+  },
+  optimism: {
+    label: "Optimism",
+    chain: optimismSepolia,
+    kitChain: "Optimism_Sepolia",
+    cctpDomain: 2,
+    explorer: "https://sepolia-optimism.etherscan.io",
+  },
+  avalanche: {
+    label: "Avalanche",
+    chain: avalancheFuji,
+    kitChain: "Avalanche_Fuji",
+    cctpDomain: 1,
+    explorer: "https://testnet.snowtrace.io",
+  },
+  unichain: {
+    label: "Unichain",
+    chain: unichainSepolia,
+    kitChain: "Unichain_Sepolia",
+    cctpDomain: 10,
+    explorer: "https://sepolia.uniscan.xyz",
+  },
+};
+
+export const sources = isTestnet ? testnetSources : mainnetSources;
 
 export const sourceIds = Object.keys(sources) as SourceId[];
 

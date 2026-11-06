@@ -4,10 +4,13 @@ import { readContract, sendTransaction, signTypedData, switchChain, waitForTrans
 import { sources, type SourceId } from "./chains";
 import { config, type ChainId } from "./config";
 import { erc20Abi } from "./contracts";
+import { isTestnet } from "./network";
 import { tokenBySymbol } from "./tokens";
+import { quoteEthToUsdc, swapEthToUsdc } from "./uniswapSepolia";
 
 /// Swaps on the source chain go through the Uniswap Trading API (via /api/uniswap), routed CLASSIC so the
-/// output lands in the wallet in the same transaction and can be bridged right after.
+/// output lands in the wallet in the same transaction and can be bridged right after. On testnet they go
+/// straight to the v4 contracts on Sepolia instead.
 
 /// Quotes only need a plausible swapper before a wallet is connected.
 const QUOTE_SWAPPER = "0x000000000000000000000000000000000000dEaD";
@@ -31,7 +34,9 @@ export type SourceQuote = {
   gasUsd?: number;
   priceImpact?: number;
   pools: string;
-  raw: Classic;
+  /// How far a testnet pool's price is from the market (testnet pools drift a lot).
+  deviation?: number;
+  raw?: Classic;
 };
 
 async function call<T>(action: "check_approval" | "quote" | "swap", body: unknown): Promise<T> {
@@ -60,7 +65,13 @@ export async function quoteToUsdc(
   amountIn: bigint,
   slippage: number,
   swapper?: Address,
+  marketPrice?: number,
 ): Promise<SourceQuote> {
+  if (isTestnet) {
+    const quote = await quoteEthToUsdc(amountIn, marketPrice);
+    if (!quote) throw new Error("no pool has a quote right now");
+    return { amountIn, amountOut: quote.amountOut, pools: "v4", deviation: quote.deviation };
+  }
   const raw = await call<Classic>("quote", {
     swapper: swapper ?? QUOTE_SWAPPER,
     tokenIn: tokenAddress(asset, from),
@@ -93,6 +104,12 @@ export async function swapToUsdc(
   const chainId = sources[from].chain.id as ChainId;
   await switchChain(config, { chainId });
 
+  if (isTestnet) {
+    const quote = await quoteEthToUsdc(amountIn);
+    if (!quote) throw new Error("No Uniswap pool on Sepolia has a quote right now");
+    return swapEthToUsdc({ account, amountIn, quote, slippage: slippage / 100, fromWeth: asset === "WETH" }, onStatus);
+  }
+
   const tokenIn = tokenAddress(asset, from);
   if (tokenIn !== zeroAddress) {
     const { approval } = await call<{ approval: { to: Address; data: Hex; value?: string } | null }>("check_approval", {
@@ -115,8 +132,12 @@ export async function swapToUsdc(
 
   onStatus(`Quoting ${asset} to USDC on Uniswap`);
   const { raw } = await quoteToUsdc(asset, from, amountIn, slippage, account);
-  const { permitData, permitTransaction: _, ...quote } = raw;
-  const body: Record<string, unknown> = { ...quote };
+  if (!raw) throw new Error("Uniswap returned no route");
+  // permitData goes back only together with its signature; permitTransaction is never sent.
+  const body: Record<string, unknown> = { ...raw };
+  delete body.permitData;
+  delete body.permitTransaction;
+  const { permitData } = raw;
   if (permitData) {
     onStatus("Signing the Permit2 allowance");
     body.signature = await signTypedData(config, {
@@ -150,5 +171,3 @@ const usdcBalance = (account: Address, from: SourceId) => readContract(config, {
     functionName: "balanceOf",
     args: [account],
   });
-
-export const feeLabel = (fee: number) => `${fee / 10_000}%`;

@@ -104,7 +104,7 @@ export function settlementAction({ plan, recipient, minOut = 0n, poolTick = 0, r
       return { action: Action.Provide, recipient, token: arc.eurc, amount: 1n, limit: units((Number(plan.amount) / 2) * rate * keep), data };
     }
     case "lend":
-      return { ...none, action: Action.Earn, recipient, token: plan.vault as Address, amount: 0n };
+      return { ...none, action: Action.Earn, recipient, token: (plan.vault || arc.morphoVault) as Address, amount: 0n };
     default:
       return { ...none, action: Action.Deposit, recipient, token: arc.usdc, amount: 0n };
   }
@@ -195,9 +195,6 @@ export async function sendThroughRouter(context: Context, onStep: (label: string
   return { key: orderKey(intent, sent.args.id, context.account), txHash, sourceChainId: chainId, explorer: source.explorer };
 }
 
-/// Morpho cirBTC/USDC market on Arc mainnet.
-const CIRBTC_MARKET = "0xc2db905f174e5defcce01d321b09f15f78856a36a21b90cc7e1abbc29225815d";
-
 const arcToken = (asset: AssetId): Address => {
   const address = tokenBySymbol[asset]?.arc;
   if (!address) throw new Error(`${asset} does not bridge to Arc`);
@@ -239,7 +236,7 @@ export async function sendThroughWallet(context: Context, onStep: (label: string
   onStep(`Bridging ${asset} from ${sources[plan.from].label} with Bridge Kit`);
   let bridged = await kit.bridge({
     from: { adapter, chain: sources[plan.from].kitChain as never },
-    to: { adapter, chain: "Arc" as never },
+    to: { adapter, chain: arc.kitChain as never },
     amount: plan.amount,
     token: kitToken(asset) as never,
     config: { transferSpeed: plan.speed === "fast" ? "FAST" : "SLOW" },
@@ -261,7 +258,7 @@ export async function sendThroughWallet(context: Context, onStep: (label: string
     onStep(`Swapping ${from} into ${to} with Circle Swap`);
     const toBefore = await arcBalance(arcToken(to), account);
     const result = await kit.swap({
-      from: { adapter, chain: "Arc" },
+      from: { adapter, chain: arc.kitChain as never },
       tokenIn: kitToken(from) as never,
       tokenOut: kitToken(to) as never,
       amountIn: formatUnits(amount, assets[from].decimals),
@@ -306,8 +303,8 @@ export async function sendThroughWallet(context: Context, onStep: (label: string
       const usdc = await swap(asset, "USDC", arrived);
       onStep("Depositing into Morpho with Circle Earn");
       const deposit = await kit.earn.deposit({
-        from: { adapter, chain: "Arc" },
-        vaultAddress: plan.vault,
+        from: { adapter, chain: arc.kitChain as never },
+        vaultAddress: plan.vault || arc.morphoVault!,
         amount: formatUnits(usdc, 6),
       });
       steps.push({ name: "Lending on Morpho", explorerUrl: tx("txHash" in deposit ? String(deposit.txHash) : undefined) });
@@ -363,9 +360,9 @@ async function loop(
   onStep: (label: string) => void,
 ): Promise<Step[]> {
   const slippageBps = Math.round(Number(plan.slippage) * 100);
-  const from = { adapter, chain: "Arc" as const };
+  const from = { adapter, chain: arc.kitChain as never };
   const steps: Step[] = [];
-  const quote = await kit.borrow.getMaxBorrow({ chain: "Arc", marketId: CIRBTC_MARKET, collateralAmount: collateral });
+  const quote = await kit.borrow.getMaxBorrow({ chain: arc.kitChain as never, marketId: arc.cirbtcMarket, collateralAmount: collateral });
   const lltv = 0.86;
   const collateralValue = Number(quote.maxBorrowAmount.amount) / lltv;
   let remaining = collateralValue * (Number(plan.leverage) - 1);
@@ -380,7 +377,7 @@ async function loop(
     onStep(`Round ${round}: borrowing ${borrowAmount} USDC on Morpho`);
     const borrowed = loanId
       ? await kit.borrow.borrow({ from, loanId, borrowAmount })
-      : await kit.borrow.borrow({ from, marketId: CIRBTC_MARKET, borrowAmount });
+      : await kit.borrow.borrow({ from, marketId: arc.cirbtcMarket, borrowAmount });
     if (borrowed.status === "submitted") throw new Error("The borrow is still pending in your wallet");
     loanId = borrowed.loanId;
     debt += Number(borrowAmount);

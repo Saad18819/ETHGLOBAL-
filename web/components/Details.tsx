@@ -7,6 +7,7 @@ import type { CctpFees } from "@/lib/flows";
 import { arrival, sources } from "@/lib/chains";
 import type { SourceQuote } from "@/lib/uniswap";
 import { feeApr, percent, usd, type Markets } from "@/lib/markets";
+import { isTestnet } from "@/lib/network";
 import { liquidationDrop, loopRounds, MAX_LEVERAGE } from "@/lib/loop";
 import { bridgedAsset, ranges, routeOf, type Plan } from "@/lib/plan";
 
@@ -14,6 +15,9 @@ export type PoolStats = { rate: number; usdcDepth: number; eurcDepth: number };
 
 
 type Row = [label: string, value: ReactNode];
+
+/// Where the transaction itself runs, next to the mainnet numbers shown for reference.
+const where = isTestnet ? " on testnet" : "";
 
 /// Numbers behind the sentence, so the user knows what they get before they sign.
 export function Details({
@@ -34,6 +38,8 @@ export function Details({
   const amount = usdcOut ?? (Number(plan.amount) || 0);
   const fast = plan.speed === "fast";
   const price = usdcOut !== undefined ? 1 : (markets?.prices[plan.asset] ?? NaN);
+  // What the amount is worth in USDC, which is what the pool and vault receive. Zero until prices load.
+  const valueUsd = Number.isFinite(price) ? amount * price : 0;
   const rows: Row[] = [];
 
   if (sourceQuote && usdcOut !== undefined) {
@@ -45,6 +51,15 @@ export function Details({
         "Price impact",
         <span key="impact" className={styles.caution}>
           {impact.toFixed(2)}%, try a smaller amount
+        </span>,
+      ]);
+    }
+    if (sourceQuote.deviation !== undefined && Math.abs(sourceQuote.deviation) > 0.1) {
+      rows.push([
+        "Pool price",
+        <span key="deviation" className={styles.caution}>
+          This testnet pool prices {plan.asset} {(sourceQuote.deviation + 1).toFixed(1)}x the market. On mainnet the same
+          route meets real liquidity.
         </span>,
       ]);
     }
@@ -64,10 +79,10 @@ export function Details({
       rows.push(...holdRows(plan, amount * price, markets, pool));
       break;
     case "pool":
-      rows.push(...poolRows(plan, amount, pool, markets));
+      rows.push(...poolRows(plan, valueUsd, pool, markets));
       break;
     case "lend":
-      rows.push(...lendRows(plan, amount, markets));
+      rows.push(...lendRows(plan, valueUsd, markets));
       break;
     case "loop":
       rows.push(...loopRows(plan, amount * price, markets));
@@ -133,9 +148,9 @@ function poolRows(plan: Plan, amount: number, pool?: PoolStats, markets?: Market
           ],
         ] as Row[])
       : []),
-    ["Fee APR on testnet", `${percent(apr)}, from ${usd(volume)} of volume in the last 7 days`],
+    [`Fee APR${where}`, `${percent(apr)}, from ${usd(volume)} of volume in the last 7 days`],
     ["You earn about", `${(amount * apr).toFixed(2)} USDC a year in fees, more while a narrow range stays in range`],
-    ["Price", `1 USDC = ${pool.rate.toFixed(4)} EURC`],
+    [`Price${where}`, `1 USDC = ${pool.rate.toFixed(4)} EURC`],
     ["In range now", `about ${usd(depth)}`],
     ["Your share", depth > 0 ? `about ${percent(amount / (depth + amount), 1)} of in-range liquidity` : "all of it"],
     ["Range", ranges[plan.range]],
@@ -160,8 +175,8 @@ function lendRows(plan: Plan, amount: number, markets?: Markets): Row[] {
           ["Earns about there", `${(amount * best[0].apy).toFixed(2)} USDC a year`],
         ] as Row[])
       : []),
-    ["Vault", `${vault.name} on ${vault.protocol === "MORPHO" ? "Morpho" : vault.protocol}`],
-    ["APY", percent(vault.apy)],
+    [`Deposits into`, `${vault.name} on ${vault.protocol === "MORPHO" ? "Morpho" : vault.protocol}${isTestnet ? ", Arc Testnet" : ""}`],
+    [`APY${where}`, percent(vault.apy)],
     ["Earns about", `${(amount * vault.apy).toFixed(2)} USDC a year`],
     ["Available liquidity", usd(vault.liquidity)],
     ["Vault fee", percent(vault.fee, 0)],
@@ -181,7 +196,7 @@ function loopRows(plan: Plan, valueUsd: number, markets?: Markets): Row[] {
   const rounds = loopRounds(leverage, market.lltv);
   const main = markets?.mainnet.markets.find((m) => m.pair === "cirBTC/USDC");
   return [
-    ["Market", `Morpho cirBTC/USDC, LLTV ${percent(market.lltv, 0)}`],
+    ["Market", `Morpho cirBTC/USDC${isTestnet ? " on Arc Testnet" : ""}, LLTV ${percent(market.lltv, 0)}`],
     ...(main
       ? ([
           [
@@ -192,7 +207,7 @@ function loopRows(plan: Plan, valueUsd: number, markets?: Markets): Row[] {
       : []),
     ["BTC price", usd(btc)],
     ["Exposure", `${usd(valueUsd * leverage)} of BTC for ${usd(valueUsd)}`],
-    ["Borrows", `about ${(valueUsd * (leverage - 1)).toFixed(2)} USDC at ${percent(market.borrowApy, 3)}`],
+    ["Borrows", `about ${(valueUsd * (leverage - 1)).toFixed(2)} USDC at ${percent(market.borrowApy, 3)}${where}`],
     [
       "Risk",
       <Risk key="risk" ltv={ltv} lltv={market.lltv} drop={drop} liquidation={usd(liquidation)} />,

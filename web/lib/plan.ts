@@ -7,8 +7,8 @@ export type { SourceId } from "./chains";
 export type AssetId = string;
 export type NextId = "pay" | "hold" | "pool" | "lend" | "loop";
 /// Assets Circle Swap can swap into on Arc, so they can be paid or held whatever was moved.
-export const arcSwappable = ["USDC", "EURC", "cirBTC", "WETH"] as const;
-export type PayToken = (typeof arcSwappable)[number];
+export const arcSwappable = tokens.filter((token) => token.arcSwap).map((token) => token.symbol);
+export type PayToken = string;
 export type HoldToken = string;
 export type Range = "full" | "20" | "5" | "1";
 export type Speed = "fast" | "standard";
@@ -131,7 +131,7 @@ export const nextSteps: NextStep[] = [
   {
     id: "hold",
     title: "Hold on Arc",
-    body: "Land it as USDC, EURC, cirBTC or WETH, swapped where the liquidity is, or keep what you moved.",
+    body: "Land it as a stablecoin or cirBTC, swapped where the liquidity is, or keep what you moved.",
     verb: "hold it as",
   },
   {
@@ -167,6 +167,6 @@ export function normalizePlan(plan: Plan): Plan {
 /// What the funds can be held as on Arc: whatever Circle Swap can swap into there, plus the moved asset
 /// itself when Circle bridges it natively.
 export function holdOptions(asset: AssetId, from: SourceId): HoldToken[] {
-  const own = bridgesNatively(asset, from) && !(arcSwappable as readonly string[]).includes(asset) ? [asset] : [];
+  const own = bridgesNatively(asset, from) && !arcSwappable.includes(asset) ? [asset] : [];
   return [...arcSwappable, ...own];
 }
