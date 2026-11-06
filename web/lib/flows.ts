@@ -36,7 +36,7 @@ import { MAX_ROUNDS, ROUND_SHARE } from "./loop";
 import { orderKey } from "./order";
 import type { PoolPair } from "./pools";
 import { fullRange, mintPosition } from "./positions";
-import { rangeTicks } from "./quote";
+import { rangeTicks, usdcForEurc, type EurcPool } from "./quote";
 
 export const Action = { Pay: 0, Deposit: 1, Earn: 2, Provide: 3 } as const;
 
@@ -73,6 +73,8 @@ export type Context = {
   poolTick?: number;
   /// EURC per USDC on the pool, for price limits.
   rate?: number;
+  /// The USDC/EURC pool's price and in-range liquidity, for the cost of an exact EURC payment.
+  eurc?: Pick<EurcPool, "sqrtPrice" | "liquidity">;
   invoiceId?: Hex;
   replyTo?: Address;
   /// USDC/EURC pool state on Arc, for wallet-side liquidity.
@@ -84,7 +86,7 @@ const none = { limit: 0n, data: "0x" as Hex };
 const units = (value: number) => BigInt(Math.floor(value * 1e6));
 
 /// What the settlement contract on Arc does once the USDC is there, with the price bounds it enforces.
-export function settlementAction({ plan, recipient, minOut = 0n, poolTick = 0, rate }: Context) {
+export function settlementAction({ plan, recipient, minOut = 0n, poolTick = 0, rate, eurc }: Context) {
   const keep = 1 - Number(plan.slippage) / 100;
   switch (plan.next) {
     case "pay": {
@@ -92,9 +94,11 @@ export function settlementAction({ plan, recipient, minOut = 0n, poolTick = 0, r
       if (plan.payToken !== "EURC") {
         return { ...none, action: Action.Pay, recipient, token: arc.usdc, amount: units(amount) };
       }
-      if (!rate) throw new Error("Pool price is not loaded yet");
-      // The most USDC the exact EURC payment may cost.
-      return { ...none, action: Action.Pay, recipient, token: arc.eurc, amount: units(amount), limit: units(amount / rate / keep) + 1n };
+      if (!eurc) throw new Error("Pool price is not loaded yet");
+      // The most USDC the exact EURC payment may cost: the pool's fee and price impact, then the slippage.
+      const cost = usdcForEurc(amount, eurc);
+      if (!Number.isFinite(cost)) throw new Error("The EURC pool on Arc is too shallow for this payment");
+      return { ...none, action: Action.Pay, recipient, token: arc.eurc, amount: units(amount), limit: units(cost / keep) + 1n };
     }
     case "hold":
       // USDC lands as it is; EURC is bought on the Uniswap pool with a minimum out.

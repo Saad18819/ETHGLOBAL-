@@ -39,6 +39,19 @@ export function usePool() {
   return useQuery({ queryKey: ["eurc-pool"], queryFn: readPool, refetchInterval: 30_000 });
 }
 
+export type EurcPool = Awaited<ReturnType<typeof readPool>>;
+
+/// USDC the pool takes for exactly `eurc` out: its fee plus the price moving along the curve, with the
+/// in-range liquidity as it is now. Infinity when that liquidity can not cover the amount.
+export function usdcForEurc(eurc: number, pool: Pick<EurcPool, "sqrtPrice" | "liquidity">) {
+  const liquidity = Number(pool.liquidity);
+  // USDC is token0 and EURC token1, so taking EURC out lowers the square root price by out / L.
+  const after = pool.sqrtPrice - (eurc * 1e6) / liquidity;
+  if (!(liquidity > 0) || !(after > 0)) return Infinity;
+  const usdc = liquidity * (1 / after - 1 / pool.sqrtPrice);
+  return usdc / (1 - eurcPool.fee / 1e6) / 1e6;
+}
+
 /// EURC per USDC from the pool's spot price.
 export function useEurcRate() {
   const pool = usePool();
