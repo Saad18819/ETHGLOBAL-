@@ -55,114 +55,93 @@
   font-weight: 600;
 }
 
-.pair {
+.breakdown {
   display: grid;
-  grid-template-columns: repeat(2, minmax(0, 1fr));
+  grid-template-columns: 220px 220px minmax(0, 1fr);
   gap: 32px;
+  align-items: start;
 }
 
-.chart {
+.donut {
   margin: 0;
 }
 
 .caption {
-  margin-bottom: 10px;
+  margin-bottom: 6px;
   color: var(--muted);
   font-size: 13px;
 }
 
-.bars {
-  display: grid;
-  gap: 2px;
-  margin: 0;
-  padding: 0;
-  list-style: none;
-}
-
-.bar {
-  position: relative;
-  display: grid;
-  grid-template-columns: 150px 1fr 104px;
-  gap: 12px;
-  align-items: center;
-  padding: 7px 0;
-  border-radius: 6px;
-  font-size: 14px;
-  outline: none;
-}
-
-.label {
-  display: inline-flex;
-  align-items: center;
-  gap: 6px;
-  min-width: 0;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-
-.tag {
-  padding: 1px 7px;
-  border-radius: 999px;
-  background: var(--pill-bg);
-  color: var(--pill-ink);
-  font-size: 11px;
-}
-
-/* One series per chart, so one hue: the app's violet ink. */
-.track {
-  height: 10px;
-  border-radius: 0 4px 4px 0;
-  background: var(--line);
-}
-
-.fill {
+.ring {
   display: block;
-  height: 100%;
-  min-width: 2px;
-  border-radius: 0 4px 4px 0;
-  background: var(--violet-ink);
+  width: 100%;
+  max-width: 220px;
+  overflow: visible;
 }
 
-.value {
-  display: flex;
-  justify-content: flex-end;
-  gap: 8px;
+/* A 2px gap of the page surface between neighbouring slices. */
+.slice {
+  stroke: var(--bg);
+  stroke-width: 2;
+  transition:
+    opacity 140ms ease,
+    d 140ms ease;
+  cursor: default;
+}
+
+.slice[data-dim] {
+  opacity: 0.35;
+}
+
+.centerValue {
+  fill: var(--ink);
+  font-size: 12px;
+  font-weight: 600;
   font-variant-numeric: tabular-nums;
 }
 
+.centerLabel {
+  fill: var(--muted);
+  font-size: 7px;
+}
+
+.legend {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 14px;
+}
+
+.legend th {
+  padding: 0 0 8px;
+  color: var(--muted);
+  font-size: 12px;
+  font-weight: 500;
+}
+
+.legend td {
+  padding: 7px 0;
+  border-top: 1px solid var(--line);
+  white-space: nowrap;
+}
+
+.legend tr[data-active] td {
+  background: color-mix(in srgb, var(--line) 55%, transparent);
+}
+
+.swatch {
+  display: inline-block;
+  width: 10px;
+  height: 10px;
+  margin-right: 8px;
+  border-radius: 3px;
+  vertical-align: -1px;
+}
+
 .share {
+  display: inline-block;
   min-width: 34px;
   color: var(--muted);
   text-align: right;
-}
-
-.tip {
-  position: absolute;
-  z-index: 5;
-  bottom: calc(100% + 4px);
-  left: 150px;
-  padding: 6px 10px;
-  border: 1px solid var(--line);
-  border-radius: 8px;
-  background: var(--surface);
-  box-shadow: 0 8px 24px rgba(23, 22, 27, 0.08);
-  color: var(--ink);
-  font-size: 12px;
-  white-space: nowrap;
-  opacity: 0;
-  pointer-events: none;
-  transition: opacity 120ms ease;
-}
-
-.bar:hover .tip,
-.bar:focus-visible .tip {
-  opacity: 1;
-}
-
-.bar:hover .fill,
-.bar:focus-visible .fill {
-  filter: brightness(1.25);
 }
 
 .tableWrap {
@@ -229,16 +208,16 @@
     padding: 32px 16px 64px;
   }
 
-  .tiles,
-  .pair {
+  .tiles {
     grid-template-columns: 1fr;
   }
 
-  .bar {
-    grid-template-columns: 110px 1fr 96px;
+  .breakdown {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 16px;
   }
 
-  .tip {
-    left: 0;
+  .legend {
+    grid-column: 1 / -1;
   }
 }
