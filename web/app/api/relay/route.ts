@@ -1,30 +1,29 @@
 import { createPublicClient, createWalletClient, http, isHex, parseGwei, type Hex } from "viem";
 import { privateKeyToAccount } from "viem/accounts";
-import { arcTestnet } from "viem/chains";
 
-import { ARC_RPC } from "@/lib/config";
+import { ARC_RPC, arcChain } from "@/lib/config";
 import { deployed, settlementAbi } from "@/lib/contracts";
+import { IRIS } from "@/lib/network";
 
-const IRIS = "https://iris-api-sandbox.circle.com";
 
-const publicClient = createPublicClient({ chain: arcTestnet, transport: http(ARC_RPC) });
+const publicClient = createPublicClient({ chain: arcChain, transport: http(ARC_RPC) });
 const inFlight = new Map<Hex, Promise<Response>>();
 
 /// Finishes the CCTP leg: waits for Circle's attestation of the burn on the source chain, then mints on Arc
 /// through the settlement contract. Safe to call repeatedly; the client polls it.
 export async function POST(request: Request) {
-  const { txHash, id, domain } = (await request.json()) as { txHash?: string; id?: string; domain?: number };
-  if (!isHex(txHash) || !isHex(id) || !Number.isInteger(domain)) {
-    return Response.json({ error: "txHash, id and domain required" }, { status: 400 });
+  const { txHash, key, domain } = (await request.json()) as { txHash?: string; key?: string; domain?: number };
+  if (!isHex(txHash) || !isHex(key) || !Number.isInteger(domain)) {
+    return Response.json({ error: "txHash, key and domain required" }, { status: 400 });
   }
-  if (!deployed.settlement || !process.env.RELAYER_PRIVATE_KEY) {
-    return Response.json({ error: "relayer not configured" }, { status: 500 });
-  }
+  if (!deployed.settlement) return Response.json({ error: "settlement not configured" }, { status: 500 });
+  // Without a relayer key the wallet delivers the attestation itself; receiveFunds is open to anyone.
+  if (!process.env.RELAYER_PRIVATE_KEY) return Response.json({ state: "no-relayer" });
 
   const running = inFlight.get(txHash);
   if (running) return (await running).clone();
 
-  const task = relay(txHash, id, domain!);
+  const task = relay(txHash, key, domain!);
   inFlight.set(txHash, task);
   try {
     return (await task).clone();
@@ -33,14 +32,14 @@ export async function POST(request: Request) {
   }
 }
 
-async function relay(txHash: Hex, id: Hex, domain: number): Promise<Response> {
+async function relay(txHash: Hex, key: Hex, domain: number): Promise<Response> {
   const settlement = deployed.settlement!;
 
   const order = await publicClient.readContract({
     address: settlement,
     abi: settlementAbi,
     functionName: "getOrder",
-    args: [id],
+    args: [key],
   });
   if (order.funded > 0n) return Response.json({ state: "done" });
 
@@ -57,7 +56,7 @@ async function relay(txHash: Hex, id: Hex, domain: number): Promise<Response> {
   if (!ready) return Response.json({ state: "waiting" });
 
   const account = privateKeyToAccount(process.env.RELAYER_PRIVATE_KEY as Hex);
-  const wallet = createWalletClient({ account, chain: arcTestnet, transport: http(ARC_RPC) });
+  const wallet = createWalletClient({ account, chain: arcChain, transport: http(ARC_RPC) });
   // Arc's mempool rejects a maxFeePerGas under 20 gwei.
   const hash = await wallet.writeContract({
     address: settlement,

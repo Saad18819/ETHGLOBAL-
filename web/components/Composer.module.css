@@ -7,6 +7,11 @@
   margin: 0 auto;
 }
 
+.layout[data-compact] {
+  padding-top: 48px;
+  padding-bottom: 56px;
+}
+
 .main {
   min-width: 0;
 }
@@ -40,7 +45,8 @@
   padding: 13px 26px;
   border: none;
   border-radius: 999px;
-  background: var(--ink);
+  background: var(--pill-accent, var(--ink));
+  transition: background 160ms ease;
   color: var(--bg);
   font-size: 15px;
   font-weight: 500;
@@ -48,6 +54,11 @@
 
 .primary:disabled {
   background: var(--faint);
+}
+
+.success {
+  font-size: 14px;
+  color: var(--green-ink);
 }
 
 .status {
@@ -79,7 +90,7 @@
 @media (max-width: 960px) {
   .layout {
     grid-template-columns: 1fr;
-    gap: 48px;
-    padding: 40px 16px 72px;
+    gap: 24px;
+    padding: 24px 16px 72px;
   }
 }

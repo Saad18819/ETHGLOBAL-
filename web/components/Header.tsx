@@ -5,6 +5,7 @@ import { useConnect, useConnection, useDisconnect } from "wagmi";
 import { injected } from "wagmi/connectors";
 
 import styles from "./Header.module.css";
+import { isTestnet } from "@/lib/network";
 
 export function Header() {
   const { address, isConnected } = useConnection();
@@ -19,7 +20,14 @@ export function Header() {
       <nav className={styles.nav}>
         <Link href="/">Move</Link>
         <Link href="/invoice">Request a payment</Link>
+        <Link href="/stats">Stats</Link>
+        <Link href="/finish">Finish a transfer</Link>
       </nav>
+      {isTestnet && (
+        <span className={styles.network} title="Rates, APYs and volumes are read live from Arc mainnet. Every transaction runs on testnet, with test funds.">
+          Market data from mainnet, transactions on Arc Testnet
+        </span>
+      )}
       {isConnected && address ? (
         <button className={styles.wallet} onClick={() => disconnect.mutate()} title="Disconnect">
           <span className={styles.dot} />

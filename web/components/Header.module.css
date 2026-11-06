@@ -46,15 +46,37 @@
   background: #34a868;
 }
 
+/* On phones the links take their own row under the logo and wallet, scrolling sideways if needed. */
 @media (max-width: 640px) {
   .header {
-    padding: 16px;
-    gap: 14px;
-  }
-  .nav {
-    display: none;
+    flex-wrap: wrap;
+    padding: 14px 16px 10px;
+    gap: 10px 14px;
   }
   .mark {
     flex: 1;
+  }
+  .nav {
+    order: 3;
+    flex: 1 0 100%;
+    gap: 18px;
+    overflow-x: auto;
+    white-space: nowrap;
+    scrollbar-width: none;
+  }
+}
+
+.network {
+  padding: 6px 12px;
+  border: 1px dashed var(--line);
+  border-radius: 999px;
+  color: var(--muted);
+  font-size: 12.5px;
+  white-space: nowrap;
+}
+
+@media (max-width: 760px) {
+  .network {
+    display: none;
   }
 }

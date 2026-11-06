@@ -1,7 +1,28 @@
+.wrap {
+  margin: 28px 0 0;
+  max-width: 620px;
+}
+
+.toggle {
+  margin-top: 10px;
+  padding: 0;
+  border: none;
+  background: none;
+  color: var(--muted);
+  font-size: 13px;
+  text-decoration: underline;
+  text-decoration-color: var(--line);
+  text-underline-offset: 3px;
+}
+
+.toggle:hover {
+  color: var(--ink);
+}
+
 .details {
   display: grid;
   gap: 0;
-  margin: 28px 0 0;
+  margin: 0;
   max-width: 620px;
   border-top: 1px solid var(--line);
 }
@@ -28,4 +49,48 @@
     grid-template-columns: 1fr;
     gap: 2px;
   }
+}
+
+.risk {
+  display: grid;
+  gap: 6px;
+  --level: var(--green-ink);
+}
+
+.risk[data-level="medium"] {
+  --level: #b7791f;
+}
+
+.risk[data-level="high"] {
+  --level: var(--red-ink);
+}
+
+.meter {
+  height: 6px;
+  border-radius: 999px;
+  background: var(--line);
+  overflow: hidden;
+}
+
+.fill {
+  display: block;
+  height: 100%;
+  border-radius: 999px;
+  background: var(--level);
+}
+
+.meterLegend {
+  display: flex;
+  justify-content: space-between;
+  font-size: 12px;
+  color: var(--muted);
+}
+
+.riskText {
+  margin: 0;
+  color: var(--level);
+}
+
+.caution {
+  color: var(--warn-ink);
 }

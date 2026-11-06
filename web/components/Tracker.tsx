@@ -1,7 +1,8 @@
 "use client";
 
+import { useState } from "react";
 import { useQuery } from "@tanstack/react-query";
-import { readContract } from "wagmi/actions";
+import { readContract, switchChain, waitForTransactionReceipt, writeContract } from "wagmi/actions";
 import type { Hex } from "viem";
 
 import styles from "./Tracker.module.css";
@@ -14,7 +15,7 @@ const OPEN = 0;
 const SETTLED = 1;
 
 export function RouterTracker({
-  id,
+  orderKey,
   txHash,
   explorer,
   source,
@@ -22,7 +23,7 @@ export function RouterTracker({
   outcome,
   invoiceId,
 }: {
-  id: Hex;
+  orderKey: Hex;
   txHash: Hex;
   explorer: string;
   source: string;
@@ -31,14 +32,14 @@ export function RouterTracker({
   invoiceId?: Hex;
 }) {
   const order = useQuery({
-    queryKey: ["order", id],
+    queryKey: ["order", orderKey],
     queryFn: () =>
       readContract(config, {
         chainId: arc.chainId,
         address: deployed.settlement!,
         abi: settlementAbi,
         functionName: "getOrder",
-        args: [id],
+        args: [orderKey],
       }),
     refetchInterval: (query) => (query.state.data && query.state.data.status !== OPEN ? false : 3000),
   });
@@ -50,13 +51,54 @@ export function RouterTracker({
       const response = await fetch("/api/relay", {
         method: "POST",
         headers: { "content-type": "application/json" },
-        body: JSON.stringify({ txHash, id, domain }),
+        body: JSON.stringify({ txHash, key: orderKey, domain }),
       });
       return (await response.json()) as { state?: string; hash?: Hex; error?: string };
     },
     enabled: !funded,
-    refetchInterval: (query) => (query.state.data?.state === "done" ? false : 5000),
+    refetchInterval: (query) => (["done", "no-relayer"].includes(query.state.data?.state ?? "") ? false : 5000),
   });
+
+  // No relayer configured: once Circle attests the burn, the wallet delivers it into the settlement.
+  const selfDeliver = relay.data?.state === "no-relayer" && !funded;
+  const attestation = useQuery({
+    queryKey: ["attestation", domain, txHash],
+    enabled: selfDeliver,
+    refetchInterval: (query) => (query.state.data?.state === "attested" ? false : 5000),
+    queryFn: async () =>
+      (await (await fetch(`/api/transfer?domain=${domain}&tx=${txHash}`)).json()) as {
+        state: string;
+        message?: Hex;
+        attestation?: Hex;
+      },
+  });
+  const [delivering, setDelivering] = useState(false);
+  const [delivered, setDelivered] = useState<Hex>();
+  const [deliverError, setDeliverError] = useState<string>();
+
+  async function deliver() {
+    const ready = attestation.data;
+    if (!ready?.message || !ready.attestation) return;
+    setDelivering(true);
+    setDeliverError(undefined);
+    try {
+      await switchChain(config, { chainId: arc.chainId });
+      const hash = await writeContract(config, {
+        chainId: arc.chainId,
+        address: deployed.settlement!,
+        abi: settlementAbi,
+        functionName: "receiveFunds",
+        args: [ready.message, ready.attestation],
+      });
+      await waitForTransactionReceipt(config, { chainId: arc.chainId, hash });
+      setDelivered(hash);
+      await order.refetch();
+    } catch (cause) {
+      setDeliverError(cause instanceof Error ? cause.message.split("\n")[0] : "Delivery did not go through");
+    } finally {
+      setDelivering(false);
+    }
+  }
 
   const settled = order.data?.status === SETTLED;
   const failed = order.data !== undefined && order.data.status > SETTLED;
@@ -75,7 +117,7 @@ export function RouterTracker({
     refetchInterval: (query) => (query.state.data ? false : 5000),
   });
 
-  const intentArrived = Boolean(order.data && order.data.intent.id !== `0x${"0".repeat(64)}`);
+  const intentArrived = Boolean(order.data?.hasIntent);
   const steps: { label: string; detail?: string; state: State; href?: string }[] = [
     {
       label: `Sent from ${source}`,
@@ -91,9 +133,15 @@ export function RouterTracker({
     },
     {
       label: "USDC arrived on Arc",
-      detail: relay.data?.error ?? "Minted by Circle CCTP",
+      detail:
+        relay.data?.error ??
+        (selfDeliver
+          ? attestation.data?.state === "attested"
+            ? "Attested by Circle, ready for your wallet to deliver"
+            : "Waiting for Circle to attest the burn"
+          : "Minted by Circle CCTP"),
       state: funded ? "done" : "active",
-      href: relay.data?.hash ? `${arc.explorer}/tx/${relay.data.hash}` : undefined,
+      href: (relay.data?.hash ?? delivered) ? `${arc.explorer}/tx/${relay.data?.hash ?? delivered}` : undefined,
     },
     {
       label: failed ? "Could not finish, refunded on Arc" : outcome,
@@ -110,7 +158,17 @@ export function RouterTracker({
     });
   }
 
-  return <Steps steps={steps} />;
+  return (
+    <>
+      <Steps steps={steps} />
+      {selfDeliver && attestation.data?.state === "attested" && !delivered && (
+        <button className={styles.deliver} disabled={delivering} onClick={deliver}>
+          {delivering ? "Delivering" : "Deliver on Arc"}
+        </button>
+      )}
+      {deliverError && <p className={styles.error}>{deliverError}</p>}
+    </>
+  );
 }
 
 export function Steps({ steps }: { steps: { label: string; detail?: string; state: State; href?: string }[] }) {

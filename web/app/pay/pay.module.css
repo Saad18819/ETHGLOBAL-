@@ -5,16 +5,86 @@
   color: var(--muted);
 }
 
-.memo {
-  max-width: 1280px;
-  margin: 0 auto;
-  padding: 48px 40px 0;
+.card {
+  align-self: start;
+  display: grid;
+  gap: 14px;
+  padding: 20px 22px;
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  background: var(--surface);
+}
+
+.cardHead {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.cardTitle {
+  color: var(--muted);
   font-size: 14px;
+}
+
+.status {
+  padding: 3px 10px;
+  border-radius: 999px;
+  background: var(--warn-bg);
+  color: var(--warn-ink);
+  font-size: 12px;
+  font-weight: 500;
+}
+
+.status[data-paid] {
+  background: var(--green);
+  color: var(--green-ink);
+}
+
+.owed {
+  font-size: 34px;
+  font-weight: 600;
+  letter-spacing: -0.02em;
+}
+
+.facts {
+  display: grid;
+  gap: 8px;
+  margin: 0;
+  font-size: 14px;
+}
+
+.facts div {
+  display: flex;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.facts dt {
   color: var(--muted);
 }
 
+.facts dd {
+  margin: 0;
+  text-align: right;
+}
+
+.facts a {
+  color: inherit;
+}
+
+.note {
+  margin: 0;
+  padding-top: 12px;
+  border-top: 1px solid var(--line);
+  color: var(--muted);
+  font-size: 13px;
+  line-height: 1.5;
+}
+
+/* On narrow screens the invoice comes first: it is what the payer is paying. */
 @media (max-width: 960px) {
-  .memo {
-    padding: 32px 16px 0;
+  .card {
+    order: -1;
   }
 }

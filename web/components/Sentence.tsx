@@ -4,9 +4,15 @@ import { Field, Fixed, Select } from "./Pill";
 import styles from "./Sentence.module.css";
 import { sources } from "@/lib/chains";
 import { liquidationDrop, MAX_LEVERAGE } from "@/lib/loop";
-import { percent, type Vault } from "@/lib/markets";
+import { holdingOf, short, spendable, type Holding } from "@/lib/balances";
+import { shortAddress } from "@/lib/format";
+import { pools } from "@/lib/pools";
+import { protocolOf, protocols, tokenColor } from "@/lib/brand";
+import { percent, usd, type Vault } from "@/lib/markets";
 import {
   assets,
+  bridgedAsset,
+  holdOptions,
   nextSteps,
   normalizePlan,
   ranges,
@@ -15,6 +21,7 @@ import {
   type AssetId,
   type HoldToken,
   type NextId,
+  type PayToken,
   type Plan,
   type Range,
   type SourceId,
@@ -25,51 +32,81 @@ export function Sentence({
   onChange,
   vaults = [],
   lltv,
+  holdings,
   locked = false,
+  poolRates,
 }: {
   plan: Plan;
   onChange: (plan: Plan) => void;
   vaults?: Vault[];
   lltv?: number;
+  holdings?: Holding[];
   locked?: boolean;
+  /// Fee APR of each pool by id: measured on Arc mainnet, or for a pair not on Arc yet, the same pair
+  /// on another chain (`where`).
+  poolRates?: Record<string, { apr: number; where?: string }>;
 }) {
+  const totalOf = (asset: AssetId) =>
+    holdings?.filter((h) => h.asset === asset).reduce((sum, h) => sum + Number(h.amount), 0) ?? 0;
+  const held = holdingOf(holdings, plan.asset, plan.from);
+  const token = tokenColor(plan.asset);
+  const brand = protocols[protocolOf[plan.next]];
   const set = (patch: Partial<Plan>) => onChange(normalizePlan({ ...plan, ...patch }));
   const viaRouter = routeOf(plan) === "router";
 
   return (
     <div className={styles.sentence}>
-      Move <Field label="Amount" numeric value={plan.amount} onChange={(amount) => set({ amount })} />{" "}
+      Move{" "}
+      <Field
+        label="Amount"
+        numeric
+        value={plan.amount}
+        onChange={(amount) => set({ amount })}
+        hint={held ? `of ${short(held.amount)}` : undefined}
+        presets={
+          held
+            ? [
+                { label: "50%", value: spendable(plan.asset, plan.from, held.amount, 0.5) },
+                { label: "max", value: spendable(plan.asset, plan.from, held.amount) },
+              ]
+            : undefined
+        }
+        swatch={token}
+        maxChars={10}
+      />{" "}
       <Select<AssetId>
         label="Asset"
+        swatch={token}
         value={plan.asset}
-        options={(Object.keys(assets) as AssetId[]).map((id) => ({ value: id, label: id }))}
-        onChange={(asset) => set({ asset, amount: assets[asset].example, payAmount: assets[asset].example })}
+        options={(Object.keys(assets) as AssetId[]).map((id) => ({
+          value: id,
+          label: id,
+          hint: totalOf(id) > 0 ? short(String(totalOf(id))) : undefined,
+        }))}
+        onChange={(asset) =>
+          set({ asset, amount: assets[asset].example, payAmount: assets[asset].token.kind === "stable" ? "9" : "8" })
+        }
       />{" "}
       from{" "}
       <Select<SourceId>
         label="From"
+        tone="stone"
         value={plan.from}
-        options={assets[plan.asset].sources.map((id) => ({
-          value: id,
-          label: sources[id].label,
-          hint: sources[id].router ? "CCIP" : undefined,
-        }))}
+        options={assets[plan.asset].sources.map((id) => {
+          const holding = holdingOf(holdings, plan.asset, id);
+          return { value: id, label: sources[id].label, hint: holding ? `${short(holding.amount)} ${plan.asset}` : undefined };
+        })}
         onChange={(from) => set({ from })}
       />{" "}
       to Arc, <span className={styles.andthen}>and then</span>{" "}
       {locked ? (
-        <Fixed tone="green">{stepOf(plan.next).verb}</Fixed>
+        <Fixed swatch={brand}>{stepOf(plan.next).verb}</Fixed>
       ) : (
         <Select<NextId>
           label="And then"
-          tone="green"
+          swatch={brand}
           value={plan.next}
-          options={nextSteps.map((step) => ({
-            value: step.id,
-            label: step.verb.replace(/ (as|on|to)$/, ""),
-            hint: step.blocked(plan),
-            disabled: Boolean(step.blocked(plan)),
-          }))}
+          options={nextSteps.map((step) => ({ value: step.id, label: step.verb.replace(/ (as|on|to|to the)$/, "") }))}
           onChange={(next) => set({ next })}
         >
           {stepOf(plan.next).verb}
@@ -80,11 +117,13 @@ export function Sentence({
           {" "}
           <Select<HoldToken>
             label="Hold as"
-            tone="green"
+            swatch={tokenColor(plan.hold)}
             value={plan.hold}
-            options={(["EURC", "cirBTC"] as const)
-              .filter((token) => token !== plan.asset)
-              .map((token) => ({ value: token, label: token }))}
+            options={holdOptions(plan.asset, plan.from).map((token) => ({
+              value: token,
+              label: token,
+              hint: token === bridgedAsset(plan) ? "no swap" : undefined,
+            }))}
             onChange={(hold) => set({ hold })}
           />
         </>
@@ -92,9 +131,28 @@ export function Sentence({
       {plan.next === "pool" && (
         <>
           {" "}
+          <Select<string>
+            label="Pool"
+            swatch={brand}
+            value={plan.pool}
+            options={pools.map((pool) => ({
+              value: pool.id,
+              label: pool.id,
+              hint: poolRates?.[pool.id]
+                ? `${percent(poolRates[pool.id].apr, 1)} APR${poolRates[pool.id].where ? ` on ${poolRates[pool.id].where}` : ""}, ${pool.fee / 10_000}% fee`
+                : `new pool, you start it, ${pool.fee / 10_000}% fee`,
+            }))}
+            onChange={(pool) => set({ pool })}
+          />{" "}
+          {/* Only the pool is a choice; its rate is a fact about it, so it reads as plain text. */}
+          pool
+          {poolRates?.[plan.pool]
+            ? ` at ${percent(poolRates[plan.pool].apr, 1)} APR${poolRates[plan.pool].where ? ` on ${poolRates[plan.pool].where}` : ""}`
+            : ""}
+          ,{" "}
           <Select<Range>
             label="Range"
-            tone="sand"
+            swatch={brand}
             value={plan.range}
             options={(Object.keys(ranges) as Range[]).map((range) => ({ value: range, label: ranges[range] }))}
             onChange={(range) => set({ range })}
@@ -106,37 +164,43 @@ export function Sentence({
           {" "}
           <Select<string>
             label="Vault"
-            tone="sand"
+            swatch={brand}
             value={plan.vault || vaults[0].address}
             options={vaults.map((vault) => ({
               value: vault.address,
               label: vault.name,
-              hint: `${percent(vault.apy)} APY`,
+              hint: `${percent(vault.apy)} APY, ${usd(vault.liquidity)} liquidity`,
             }))}
             onChange={(vault) => set({ vault })}
-          >
-            Morpho at {percent((vaults.find((v) => v.address === plan.vault) ?? vaults[0]).apy)}
-          </Select>
+          />{" "}
+          {/* Only the vault is a choice; its rate reads as plain text, like the pool's. */}
+          at {percent((vaults.find((v) => v.address === plan.vault) ?? vaults[0]).apy)} APY
         </>
       )}
       {plan.next === "loop" && (
         <>
           {" "}
-          <Field
+          <Select<string>
             label="Leverage"
-            numeric
+            swatch={brand}
             value={plan.leverage}
+            options={["1.5", "2", "2.5", "3", "3.5", "4"].map((value) => ({
+              value,
+              label: `${value}x`,
+              hint: lltv ? `liquidated ${Math.round(liquidationDrop(Number(value), lltv) * 100)}% down` : undefined,
+            }))}
             onChange={(leverage) => set({ leverage })}
-            {...leverageHint(Number(plan.leverage), lltv)}
-          />
-          x
+            custom={{ min: 1.1, max: MAX_LEVERAGE, suffix: "x", placeholder: `1.1 to ${MAX_LEVERAGE}` }}
+          >
+            {plan.leverage}x
+          </Select>
         </>
       )}
       {plan.next === "pay" && (
         <>
           {" "}
           {locked ? (
-            <Fixed tone="sand">{short(plan.recipient)}</Fixed>
+            <Fixed tone="sand">{shortAddress(plan.recipient)}</Fixed>
           ) : (
             <Field
               label="Recipient"
@@ -144,29 +208,33 @@ export function Sentence({
               placeholder="name.eth"
               value={plan.recipient}
               onChange={(recipient) => set({ recipient })}
+              display={shortAddress}
+              maxChars={18}
             />
           )}{" "}
           {locked ? (
-            <Fixed tone="green">
+            <Fixed swatch={tokenColor(plan.payToken)}>
               {plan.payAmount} {plan.payToken}
             </Fixed>
           ) : (
             <>
-              <Field label="Pay amount" numeric value={plan.payAmount} onChange={(payAmount) => set({ payAmount })} />{" "}
-              {viaRouter ? (
-                <Select
-                  label="Pay in"
-                  tone="green"
-                  value={plan.payToken}
-                  options={[
-                    { value: "USDC", label: "USDC" },
-                    { value: "EURC", label: "EURC" },
-                  ]}
-                  onChange={(payToken) => set({ payToken })}
-                />
-              ) : (
-                <Fixed tone="green">{plan.asset}</Fixed>
-              )}
+              <Field
+                label="Pay amount"
+                numeric
+                value={plan.payAmount}
+                onChange={(payAmount) => set({ payAmount })}
+                swatch={tokenColor(plan.payToken)}
+                maxChars={10}
+              />{" "}
+              <Select<PayToken>
+                label="Pay in"
+                swatch={tokenColor(plan.payToken)}
+                value={plan.payToken}
+                options={(viaRouter ? (["USDC", "EURC"] as const) : (["USDC", "EURC", "cirBTC"] as const)).map(
+                  (token) => ({ value: token, label: token }),
+                )}
+                onChange={(payToken) => set({ payToken })}
+              />
             </>
           )}
         </>
@@ -176,13 +244,4 @@ export function Sentence({
   );
 }
 
-function leverageHint(leverage: number, lltv?: number): { hint?: string; warn?: boolean } {
-  if (!(leverage > 1 && leverage <= MAX_LEVERAGE)) return { hint: `1.1x to ${MAX_LEVERAGE}x`, warn: true };
-  if (!lltv) return {};
-  const drop = liquidationDrop(leverage, lltv);
-  return { hint: `liquidated at ${Math.round(drop * 100)}% down`, warn: drop < 0.25 };
-}
 
-function short(value: string) {
-  return /^0x[0-9a-fA-F]{40}$/.test(value) ? `${value.slice(0, 6)}…${value.slice(-4)}` : value;
-}

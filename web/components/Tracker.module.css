@@ -64,3 +64,24 @@
     opacity: 0.35;
   }
 }
+
+.deliver {
+  margin-top: 16px;
+  padding: 10px 20px;
+  border: none;
+  border-radius: 999px;
+  background: var(--ink);
+  color: var(--bg);
+  font-size: 14px;
+  font-weight: 500;
+}
+
+.deliver:disabled {
+  background: var(--faint);
+}
+
+.error {
+  margin: 12px 0 0;
+  color: var(--red-ink);
+  font-size: 14px;
+}
