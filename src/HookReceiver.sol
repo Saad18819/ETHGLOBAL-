@@ -52,10 +52,7 @@ contract HookReceiver {
         // Any other shape reverts here and rolls back the whole delivery.
         (string memory note, uint256 orderId) = abi.decode(hookData, (string, uint256));
 
-        emit HookReceived(
-            sourceDomain, sourceAddress, tokenId, token, amount,
-            finalityThresholdExecuted, note, orderId
-        );
+        emit HookReceived(sourceDomain, sourceAddress, tokenId, token, amount, finalityThresholdExecuted, note, orderId);
         return EXECUTE_SUCCESS;
     }
 
@@ -63,15 +60,13 @@ contract HookReceiver {
     function sweep(address token, address to) external {
         if (msg.sender != owner) revert OnlyOwner();
         if (token == address(0) || to == address(0)) revert ZeroAddress();
-        (bool ok, bytes memory ret) = token.call(
-            abi.encodeWithSignature("transfer(address,uint256)", to, _balance(token))
-        );
+        (bool ok, bytes memory ret) =
+            token.call(abi.encodeWithSignature("transfer(address,uint256)", to, _balance(token)));
         if (!ok || (ret.length != 0 && !abi.decode(ret, (bool)))) revert TransferFailed();
     }
 
     function _balance(address token) private view returns (uint256) {
-        (bool ok, bytes memory ret) =
-            token.staticcall(abi.encodeWithSignature("balanceOf(address)", address(this)));
+        (bool ok, bytes memory ret) = token.staticcall(abi.encodeWithSignature("balanceOf(address)", address(this)));
         if (!ok || ret.length < 32) revert BalanceCallFailed();
         return abi.decode(ret, (uint256));
     }
