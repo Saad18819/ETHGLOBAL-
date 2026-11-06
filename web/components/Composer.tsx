@@ -13,7 +13,7 @@ import { Journey, later, phaseOf, type Phase } from "./Journey";
 import { NextPanel } from "./NextPanel";
 import { Options } from "./Options";
 import { Sentence } from "./Sentence";
-import { RouterTracker, Steps } from "./Tracker";
+import { RouterTracker } from "./Tracker";
 import { sources } from "@/lib/chains";
 import { arc } from "@/lib/contracts";
 import { cctpFees, resolveRecipient, StuckTransfer, wrapEth, type CctpFees, sendThroughRouter, sendThroughWallet, type RouterResult } from "@/lib/flows";
@@ -372,13 +372,6 @@ export function Composer({
               domain={sources[plan.from].cctpDomain}
               outcome={run.outcome}
               invoiceId={invoiceId}
-            />
-          </div>
-        )}
-        {run?.kind === "wallet" && (
-          <div className={styles.tracker}>
-            <Steps
-              steps={run.steps.map((step) => ({ label: step.name, state: "done" as const, href: step.explorerUrl }))}
             />
           </div>
         )}
