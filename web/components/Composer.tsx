@@ -1,6 +1,7 @@
 "use client";
 
 import { useState } from "react";
+import Link from "next/link";
 import { useQuery } from "@tanstack/react-query";
 import { formatUnits, parseUnits, type Address, type Hex } from "viem";
 import { useConnect, useConnection } from "wagmi";
@@ -15,7 +16,7 @@ import { Sentence } from "./Sentence";
 import { RouterTracker, Steps } from "./Tracker";
 import { sources } from "@/lib/chains";
 import { arc } from "@/lib/contracts";
-import { cctpFees, resolveRecipient, wrapEth, sendThroughRouter, sendThroughWallet, type RouterResult } from "@/lib/flows";
+import { cctpFees, resolveRecipient, StuckTransfer, wrapEth, sendThroughRouter, sendThroughWallet, type RouterResult } from "@/lib/flows";
 import { MAX_LEVERAGE } from "@/lib/loop";
 import { spendable, useBalances } from "@/lib/balances";
 import { protocolOf, protocols, swatchStyle } from "@/lib/brand";
@@ -62,6 +63,7 @@ export function Composer({
   };
   const [status, setStatus] = useState<string>();
   const [error, setError] = useState<string>();
+  const [stuck, setStuck] = useState<StuckTransfer>();
   const [busy, setBusy] = useState(false);
   const [run, setRun] = useState<Run>();
   const [journey, setJourney] = useState<{ plan: Plan; phase: Phase; failed?: boolean }>();
@@ -147,6 +149,7 @@ export function Composer({
     setBusy(true);
     setError(undefined);
     setRun(undefined);
+    setStuck(undefined);
     setJourney({ plan, phase: "source" });
     try {
       const recipient =
@@ -193,6 +196,7 @@ export function Composer({
     } catch (cause) {
       setStatus(undefined);
       setJourney((current) => current && { ...current, failed: true });
+      if (cause instanceof StuckTransfer) setStuck(cause);
       setError(readable(cause));
     } finally {
       setBusy(false);
@@ -247,7 +251,17 @@ export function Composer({
           )}
         </div>
         {journey && <Journey plan={journey.plan} phase={journey.phase} failed={journey.failed} />}
-        {error && <p className={styles.error}>{error}</p>}
+        {error && (
+          <p className={styles.error}>
+            {error}
+            {stuck && (
+              <>
+                {". "}
+                <Link href={`/finish?from=${stuck.from}&tx=${stuck.txHash}`}>Finish it on Arc</Link>
+              </>
+            )}
+          </p>
+        )}
 
         {run?.kind === "router" && (
           <div className={styles.tracker}>

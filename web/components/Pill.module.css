@@ -71,6 +71,14 @@ button.pill:hover {
   grid-area: 1 / 1;
 }
 
+.capped {
+  overflow: hidden;
+}
+
+.capped input {
+  text-overflow: ellipsis;
+}
+
 .sizer::after {
   content: attr(data-value);
   visibility: hidden;
