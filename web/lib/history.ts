@@ -17,7 +17,7 @@ export type Entry = {
   status: "done" | "sent" | "failed" | "stuck";
   steps: { name: string; href?: string }[];
   error?: string;
-  /// A transfer burned but not minted, to finish on the finish page.
+  /// A transfer burned but not minted yet.
   stuck?: { from: SourceId; tx: string };
 };
 
@@ -74,10 +74,10 @@ export function useHistory(account: Address | undefined): Entry[] {
 
 /// The sentence for a move, in the past tense.
 export function describe(plan: Plan): string {
-  const moved = `Moved ${plan.amount} ${plan.asset} from ${sources[plan.from].label}`;
+  const moved = `Moved ${plan.amount} ${plan.asset} from ${sources[plan.from].label} to ${sources[plan.to].label}`;
   const purpose: Record<NextId, string> = {
     pay: `paid ${shortAddress(plan.recipient) || "someone"} ${plan.payAmount} ${plan.payToken}`,
-    hold: `held it on Arc as ${plan.hold}`,
+    hold: `held it as ${plan.hold}`,
     pool: `added it to the ${plan.pool} pool on Uniswap`,
     lend: "lent it on Morpho",
     loop: `looped cirBTC to ${plan.leverage}x on Morpho`,

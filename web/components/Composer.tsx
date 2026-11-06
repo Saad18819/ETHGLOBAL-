@@ -1,7 +1,6 @@
 "use client";
 
 import { useRef, useState } from "react";
-import Link from "next/link";
 import { useQuery } from "@tanstack/react-query";
 import { formatUnits, parseUnits, type Address, type Hex } from "viem";
 import { useConnect, useConnection } from "wagmi";
@@ -16,7 +15,7 @@ import { Sentence } from "./Sentence";
 import { RouterTracker } from "./Tracker";
 import { sources } from "@/lib/chains";
 import { arc } from "@/lib/contracts";
-import { cctpFees, resolveRecipient, StuckTransfer, wrapEth, type CctpFees, sendThroughRouter, sendThroughWallet, type RouterResult } from "@/lib/flows";
+import { cctpFees, resolveRecipient, sendElsewhere, StuckTransfer, wrapEth, type CctpFees, sendThroughRouter, sendThroughWallet, type RouterResult } from "@/lib/flows";
 import { MAX_LEVERAGE } from "@/lib/loop";
 import { holdingOf, short, spendable, useBalances } from "@/lib/balances";
 import { describe, publish, record } from "@/lib/history";
@@ -95,7 +94,8 @@ export function Composer({
   const connect = useConnect();
   const markets = useMarkets();
   const balances = useBalances(address, markets.data?.prices);
-  const top = balances.data?.[0];
+  // The default move heads to Arc, so it starts from the largest holding elsewhere.
+  const top = balances.data?.find((holding) => holding.from !== "arc");
   const pool = usePool();
   // The settlement contract only deposits into the vault it allowlists; Circle Earn can reach all of them.
   const base =
@@ -110,7 +110,12 @@ export function Composer({
   const prices = markets.data?.prices;
   const unsized = { ...base, vault };
   const domain = sources[unsized.from].cctpDomain;
-  const fees = useQuery({ queryKey: ["cctp-fee", domain], queryFn: () => cctpFees(domain), staleTime: 60_000 });
+  const destination = sources[unsized.to].cctpDomain;
+  const fees = useQuery({
+    queryKey: ["cctp-fee", domain, destination],
+    queryFn: () => cctpFees(domain, destination),
+    staleTime: 60_000,
+  });
   // Typed what they get: move enough to cover it at market prices plus a margin; the rest stays in the
   // wallet on Arc.
   const sized: Plan =
@@ -243,6 +248,18 @@ export function Composer({
           steps: [{ name: `Sent from ${sources[plan.from].label}`, href: `${result.explorer}/tx/${result.txHash}` }],
         });
         publish({ ...shared, tx: result.txHash, status: "sent" });
+      } else if (effective.to !== "arc") {
+        const result = await sendElsewhere(context, fees.data, report);
+        setJourney((current) => current && { ...current, phase: "done" });
+        setRun({ kind: "wallet", steps: result.steps });
+        setDone(`Done. ${describe(plan)}.`);
+        record(address, {
+          purpose: plan.next,
+          summary: describe(plan),
+          status: "done",
+          steps: result.steps.map((step) => ({ name: step.name, href: step.explorerUrl })),
+        });
+        publish({ ...shared, tx: result.sourceTx, status: "done" });
       } else {
         const result = await sendThroughWallet(context, report);
         setJourney((current) => current && { ...current, phase: "done" });
@@ -365,7 +382,9 @@ export function Composer({
             {stuck && (
               <>
                 {". "}
-                <Link href={`/finish?from=${stuck.from}&tx=${stuck.txHash}`}>Finish it on Arc</Link>
+                <a href={`${sources[stuck.from].explorer}/tx/${stuck.txHash}`} target="_blank" rel="noreferrer">
+                  See the burn
+                </a>
               </>
             )}
           </p>

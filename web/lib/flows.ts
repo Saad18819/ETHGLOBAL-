@@ -56,8 +56,8 @@ export async function resolveRecipient(input: string): Promise<Address> {
 export type CctpFees = { fast: number; standard: number; forward: number };
 
 /// CCTP fee from a source chain to Arc in basis points, via our API route.
-export async function cctpFees(domain: number): Promise<CctpFees> {
-  const response = await fetch(`/api/fee?from=${domain}`);
+export async function cctpFees(from: number, to: number): Promise<CctpFees> {
+  const response = await fetch(`/api/fee?from=${from}&to=${to}`);
   if (!response.ok) throw new Error("Could not load the CCTP fee");
   return response.json();
 }
@@ -148,7 +148,8 @@ export async function sendThroughRouter(context: Context, onStep: (label: string
   onStep(`Switching to ${source.label}`);
   await switchChain(config, { chainId });
 
-  const fees = await cctpFees(source.cctpDomain);
+  // The router only sends to Arc.
+  const fees = await cctpFees(source.cctpDomain, sources.arc.cctpDomain);
   const bps = fast ? fees.fast : fees.standard;
   const maxFee = (amount * BigInt(Math.ceil(bps * 100))) / 1_000_000n + (bps > 0 ? 1n : 0n);
 
@@ -203,7 +204,7 @@ const arcToken = (asset: AssetId): Address => {
 /// Circle's kits name wrapped ether wETH; every other asset goes by its symbol.
 const kitToken = (asset: AssetId) => (asset === "WETH" || asset === "ETH" ? "wETH" : asset);
 
-/// A transfer burned on the source chain whose mint on Arc did not go through; it can be finished later.
+/// A transfer burned on the source chain whose mint did not go through yet.
 export class StuckTransfer extends Error {
   constructor(
     readonly from: SourceId,
@@ -462,12 +463,19 @@ async function loop(
   return steps;
 }
 
-/// Sends USDC or EURC from Arc back to a source chain with Bridge Kit. USDC uses Circle's forwarder, so
-/// the destination needs no gas; EURC is minted by the wallet there.
-export async function bridgeBack(
-  { token, amount, to }: { token: "USDC" | "EURC"; amount: string; to: SourceId },
+/// Pays or holds on a chain other than Arc: Bridge Kit burns on the source chain and mints straight to the
+/// recipient there. USDC is minted by Circle's forwarder, so nothing else needs signing or gas; EURC is
+/// minted by the wallet on the destination, which then needs gas there. A payment bridges only what covers
+/// the exact amount after fees, and the rest stays where it was.
+export async function sendElsewhere(
+  context: Context,
+  fees: CctpFees | undefined,
   onStep: (label: string) => void,
 ): Promise<WalletResult> {
+  const { plan, account, recipient } = context;
+  const from = sources[plan.from];
+  const to = sources[plan.to];
+  const token = plan.next === "pay" ? plan.payToken : plan.hold;
   const provider = (window as { ethereum?: unknown }).ethereum;
   if (!provider) throw new Error("No browser wallet found");
   const [{ AppKit }, { createViemAdapterFromProvider }] = await Promise.all([
@@ -476,23 +484,41 @@ export async function bridgeBack(
   ]);
   const adapter = await createViemAdapterFromProvider({ provider: provider as never });
   const kit = new AppKit();
-  // Circle's chain definitions list the forwarder on every destination here except Ethereum mainnet.
-  const forwarded = token === "USDC" && (isTestnet || to !== "ethereum");
 
-  await switchChain(config, { chainId: arc.chainId });
-  onStep(`Bridging ${amount} ${token} from Arc to ${sources[to].label}`);
+  // Circle's chain definitions list the forwarder on every destination here except Ethereum mainnet.
+  const forwarded = token === "USDC" && (isTestnet || plan.to !== "ethereum");
+  if (!forwarded) {
+    const gas = await getBalance(config, { address: account, chainId: to.chain.id as ChainId });
+    if (gas.value === 0n) {
+      throw new Error(`Your wallet needs a little ${to.chain.nativeCurrency.symbol} on ${to.label} for gas to receive ${token}`);
+    }
+  }
+
+  let amount = plan.amount;
+  if (plan.next === "pay") {
+    const bps = (plan.speed === "fast" ? fees?.fast : fees?.standard) ?? 0;
+    const forward = forwarded ? (fees?.forward ?? 0) : 0;
+    const gross = Math.ceil(((Number(plan.payAmount) + forward) / (1 - bps / 10_000)) * 1e6) / 1e6;
+    if (gross > Number(plan.amount)) {
+      throw new Error(`Paying ${plan.payAmount} ${token} on ${to.label} takes ${gross} ${token} with fees`);
+    }
+    amount = String(gross);
+  }
+
+  await switchChain(config, { chainId: from.chain.id as ChainId });
+  onStep(`Bridging ${amount} ${token} from ${from.label} to ${to.label}`);
   let bridged = await kit.bridge({
-    from: { adapter, chain: arc.kitChain as never },
-    to: { adapter, chain: sources[to].kitChain as never, useForwarder: forwarded },
+    from: { adapter, chain: from.kitChain as never },
+    to: { adapter, chain: to.kitChain as never, recipientAddress: recipient, useForwarder: forwarded },
     amount,
     token: token as never,
-    config: { transferSpeed: "FAST" },
+    config: { transferSpeed: plan.speed === "fast" ? "FAST" : "SLOW" },
   });
   if (bridged.state === "error") {
-    onStep(`Retrying the mint on ${sources[to].label}`);
+    onStep(`Retrying the mint on ${to.label}`);
     bridged = await kit.retryBridge(bridged, { from: adapter, to: adapter });
   }
-  if (bridged.state === "error") throw new Error(`Bridge Kit could not finish the transfer to ${sources[to].label}`);
+  if (bridged.state === "error") throw new Error(`Bridge Kit could not finish the transfer to ${to.label}`);
   return {
     steps: bridged.steps.map((step) => ({
       name: step.name,

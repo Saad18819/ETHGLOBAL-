@@ -95,7 +95,7 @@ export function Details({
     const bps = fast ? fees.fast : fees.standard;
     const parts = bps ? [`${((amount * bps) / 10_000).toFixed(4)} USDC (${bps} bps)`] : [];
     // Circle's forwarder mints on Arc for the wallet route, so no gas is needed there.
-    if (routeOf(plan) === "wallet" && fees.forward) parts.push(`${fees.forward.toFixed(4)} USDC for minting on Arc`);
+    if (routeOf(plan) === "wallet" && fees.forward) parts.push(`${fees.forward.toFixed(4)} USDC for minting on ${sources[plan.to].label}`);
     rows.push(["Transfer fee", parts.length ? parts.join(" plus ") : "none"]);
   }
 
@@ -147,6 +147,10 @@ function Rows({ rows }: { rows: Row[] }) {
 }
 
 function payRows(plan: Plan, pool?: PoolStats): Row[] {
+  // Elsewhere the payment is minted straight to them; the fee comes out of what is bridged, rounded up.
+  if (plan.to !== "arc") {
+    return [["They get", `at least ${plan.payAmount || 0} ${plan.payToken} on ${sources[plan.to].label}`]];
+  }
   if (routeOf(plan) !== "router" || plan.payToken === "USDC") {
     return [["They get", `exactly ${plan.payAmount || 0} ${plan.payToken}`]];
   }
@@ -160,7 +164,9 @@ function payRows(plan: Plan, pool?: PoolStats): Row[] {
 }
 
 function holdRows(plan: Plan, valueUsd: number, markets?: Markets, pool?: PoolStats): Row[] {
-  if (plan.hold === bridgedAsset(plan)) return [["Lands as", `${plan.hold} in your wallet on Arc, no swap`]];
+  if (plan.hold === bridgedAsset(plan)) {
+    return [["Lands as", `${plan.hold} in your wallet on ${sources[plan.to].label}, no swap`]];
+  }
   if (plan.hold === "EURC" && bridgedAsset(plan) === "USDC" && pool) {
     return [
       ["Swaps through", "Uniswap v4 USDC/EURC pool, 0.05% fee"],

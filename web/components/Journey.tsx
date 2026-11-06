@@ -29,7 +29,9 @@ export function Journey({ plan, phase, failed }: { plan: Plan; phase: Phase; fai
   const from = sources[plan.from].label;
   const moved = bridgedAsset(plan);
   const action = protocols[protocolOf[plan.next]];
-  const arcSwap = {
+  const dest = sources[plan.to].label;
+  // Off Arc there is no swap at the destination: what is moved is what arrives.
+  const arcSwap = plan.to === "arc" && {
     pay: plan.payToken !== moved,
     hold: plan.hold !== moved,
     lend: moved !== "USDC",
@@ -43,9 +45,11 @@ export function Journey({ plan, phase, failed }: { plan: Plan; phase: Phase; fai
       : wrapsIntoWeth(plan.asset, plan.from)
         ? { id: "source", title: from, detail: "ETH wrapped to WETH", swatch: protocols.arc }
         : { id: "source", title: from, detail: `${plan.amount} ${plan.asset}`, swatch: protocols.arc },
-    { id: "bridge", title: "Circle CCTP", detail: `${moved} to Arc`, swatch: protocols.arc },
+    { id: "bridge", title: "Circle CCTP", detail: `${moved} to ${dest}`, swatch: protocols.arc },
     ...(arcSwap ? [{ id: "arc" as const, title: "Arc", detail: "Circle Swap", swatch: protocols.arc }] : []),
-    { id: "action", title: action.name, detail: stepOf(plan.next).title, swatch: action },
+    plan.to === "arc"
+      ? { id: "action", title: action.name, detail: stepOf(plan.next).title, swatch: action }
+      : { id: "action", title: dest, detail: plan.next === "pay" ? "Paid" : "In your wallet", swatch: action },
   ];
   const reached = order.indexOf(phase);
 

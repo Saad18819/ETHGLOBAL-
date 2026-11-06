@@ -37,7 +37,8 @@ export const mainnetTokens: Token[] = [
       optimism: "0x0b2C639c533813f4Aa9D7837CAf62653d097Ff85",
       polygon: "0x3c499c542cEF5E3811e1192ce70d8cC03d5c3359",
       avalanche: "0xB97EF9Ef8734C71904D8002F8b6Bc66Dd9c48a6E",
-      unichain: "0x078D782b760474a361dDA0AF3839290b0EF57AD6"
+      unichain: "0x078D782b760474a361dDA0AF3839290b0EF57AD6",
+      arc: "0x3600000000000000000000000000000000000000"
     },
     arc: "0x3600000000000000000000000000000000000000",
     arcSwap: true,
@@ -48,7 +49,8 @@ export const mainnetTokens: Token[] = [
       "optimism",
       "polygon",
       "avalanche",
-      "unichain"
+      "unichain",
+      "arc"
     ]
   },
   {
@@ -62,14 +64,16 @@ export const mainnetTokens: Token[] = [
       arbitrum: "0x863708032B5c328e11aBcbC0DF9D79C71Fc52a48",
       polygon: "0x8a037dbcA8134FFc72C362e394e35E0Cad618F85",
       avalanche: "0xC891EB4cbdEFf6e073e859e987815Ed1505c2ACD",
-      unichain: "0x72f34BC403a005A9Be390762EAa46ED42813B0a8"
+      unichain: "0x72f34BC403a005A9Be390762EAa46ED42813B0a8",
+      arc: "0xbef5f6d51cb62b58e6a8f77868681825c6fe21c1"
     },
     arc: "0xbef5f6d51cb62b58e6a8f77868681825c6fe21c1",
     arcSwap: true,
     bridge: [
       "ethereum",
       "avalanche",
-      "base"
+      "base",
+      "arc"
     ]
   },
   {
@@ -434,10 +438,11 @@ const testnetTokens: Token[] = [
       optimism: "0x5fd84259d66Cd46123540766Be93DFE6D43130D7",
       avalanche: "0x5425890298aed601595a70AB815c96711a31Bc65",
       unichain: "0x31d0220469e10c4E71834a79b1f276d740d3768F",
+      arc: "0x3600000000000000000000000000000000000000",
     },
     arc: "0x3600000000000000000000000000000000000000",
     arcSwap: true,
-    bridge: ["base", "ethereum", "polygon", "arbitrum", "optimism", "avalanche", "unichain"],
+    bridge: ["base", "ethereum", "polygon", "arbitrum", "optimism", "avalanche", "unichain", "arc"],
   },
   {
     symbol: "EURC",
@@ -448,10 +453,11 @@ const testnetTokens: Token[] = [
       base: "0x808456652fdb597867f38412077A9182bf77359F",
       ethereum: "0x08210F9170F89Ab7658F0B5E3fF39b0E03C594D4",
       avalanche: "0x5E44db7996c682E92a960b65AC713a54AD815c6B",
+      arc: "0x89B50855Aa3bE2F677cD6303Cec089B5F319D72a",
     },
     arc: "0x89B50855Aa3bE2F677cD6303Cec089B5F319D72a",
     arcSwap: true,
-    bridge: ["base", "ethereum", "avalanche"],
+    bridge: ["base", "ethereum", "avalanche", "arc"],
   },
   {
     symbol: "ETH",
