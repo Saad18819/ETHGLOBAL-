@@ -31,6 +31,12 @@ export type Markets = {
   prices: Record<AssetId, number>;
   /// USDC/EURC pool on Arc, last 7 days.
   pool: { volume7d: number; swaps7d: number };
+  /// Real numbers from Arc mainnet, for reference next to the testnet flow.
+  mainnet: {
+    vaults: { name: string; apy: number; liquidity: number }[];
+    markets: { pair: string; borrowApy: number; lltv: number; liquidity: number }[];
+    pools: { id: string; pair: string; fee: number; tvlUsd: number; volume24hUsd: number; fees24hUsd: number; apr: number; coverage: number }[];
+  };
   asOf: string;
 };
 

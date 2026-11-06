@@ -121,9 +121,19 @@ function poolRows(plan: Plan, amount: number, pool?: PoolStats, markets?: Market
   const depth = pool.usdcDepth + pool.eurcDepth / pool.rate;
   const volume = markets?.pool.volume7d ?? 0;
   const apr = feeApr(volume, 0.0005, depth + amount);
+  const main = markets?.mainnet.pools.find((p) => p.pair === "USDC/EURC");
   return [
     ["Pool", "Uniswap v4 USDC/EURC, 0.05% fee tier"],
-    ["Fee APR", `${percent(apr)}, from ${usd(volume)} of volume in the last 7 days`],
+    ...(main
+      ? ([
+          [
+            "On Arc mainnet",
+            `${percent(main.apr)} fee APR, ${usd(main.volume24hUsd)} traded in 24 hours, ${usd(main.tvlUsd)} within 1% of the price` +
+              (main.coverage < 1 ? `, from ${percent(main.coverage, 0)} of the day` : ""),
+          ],
+        ] as Row[])
+      : []),
+    ["Fee APR on testnet", `${percent(apr)}, from ${usd(volume)} of volume in the last 7 days`],
     ["You earn about", `${(amount * apr).toFixed(2)} USDC a year in fees, more while a narrow range stays in range`],
     ["Price", `1 USDC = ${pool.rate.toFixed(4)} EURC`],
     ["In range now", `about ${usd(depth)}`],
@@ -136,7 +146,20 @@ function poolRows(plan: Plan, amount: number, pool?: PoolStats, markets?: Market
 function lendRows(plan: Plan, amount: number, markets?: Markets): Row[] {
   const vault = markets?.vaults.find((v) => v.address === plan.vault) ?? markets?.vaults[0];
   if (!vault) return [];
+  const best = markets?.mainnet.vaults ?? [];
   return [
+    ...(best.length
+      ? ([
+          [
+            "On Arc mainnet",
+            best
+              .slice(0, 3)
+              .map((v) => `${v.name} ${percent(v.apy)} (${usd(v.liquidity)})`)
+              .join(", "),
+          ],
+          ["Earns about there", `${(amount * best[0].apy).toFixed(2)} USDC a year`],
+        ] as Row[])
+      : []),
     ["Vault", `${vault.name} on ${vault.protocol === "MORPHO" ? "Morpho" : vault.protocol}`],
     ["APY", percent(vault.apy)],
     ["Earns about", `${(amount * vault.apy).toFixed(2)} USDC a year`],
@@ -156,8 +179,17 @@ function loopRows(plan: Plan, valueUsd: number, markets?: Markets): Row[] {
   const drop = liquidationDrop(leverage, market.lltv);
   const liquidation = btc * (1 - drop);
   const rounds = loopRounds(leverage, market.lltv);
+  const main = markets?.mainnet.markets.find((m) => m.pair === "cirBTC/USDC");
   return [
     ["Market", `Morpho cirBTC/USDC, LLTV ${percent(market.lltv, 0)}`],
+    ...(main
+      ? ([
+          [
+            "On Arc mainnet",
+            `borrow at ${percent(main.borrowApy)}, ${usd(main.liquidity)} available; the loop costs about ${(valueUsd * (leverage - 1) * main.borrowApy).toFixed(2)} USDC a year there`,
+          ],
+        ] as Row[])
+      : []),
     ["BTC price", usd(btc)],
     ["Exposure", `${usd(valueUsd * leverage)} of BTC for ${usd(valueUsd)}`],
     ["Borrows", `about ${(valueUsd * (leverage - 1)).toFixed(2)} USDC at ${percent(market.borrowApy, 3)}`],

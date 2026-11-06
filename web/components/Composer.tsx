@@ -19,6 +19,7 @@ import { arc } from "@/lib/contracts";
 import { cctpFees, resolveRecipient, sendThroughRouter, sendThroughWallet, type RouterResult } from "@/lib/flows";
 import { MAX_LEVERAGE } from "@/lib/loop";
 import { useBalances } from "@/lib/balances";
+import { protocolOf, protocols, swatchStyle } from "@/lib/brand";
 import { useMarkets } from "@/lib/markets";
 import { config } from "@/lib/config";
 import { defaultPlan, normalizePlan, routeOf, viaUniswap, type NextId, type Plan } from "@/lib/plan";
@@ -184,7 +185,12 @@ export function Composer({
 
         <div className={styles.actions}>
           {isConnected ? (
-            <button className={styles.primary} disabled={busy || Boolean(blocker)} onClick={go}>
+            <button
+              className={styles.primary}
+              style={swatchStyle(protocols[protocolOf[plan.next]])}
+              disabled={busy || Boolean(blocker)}
+              onClick={go}
+            >
               {busy ? "Working" : "Move it"}
             </button>
           ) : (

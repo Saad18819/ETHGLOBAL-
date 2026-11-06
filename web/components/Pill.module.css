@@ -38,6 +38,19 @@ button.pill:hover {
   color: var(--sand-ink);
 }
 
+.swatch {
+  background: var(--pill-bg);
+  color: var(--pill-ink);
+  transition:
+    background 160ms ease,
+    color 160ms ease;
+}
+
+.stone {
+  background: #efeeea;
+  color: #34323a;
+}
+
 .fixed {
   cursor: default;
 }

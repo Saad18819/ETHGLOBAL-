@@ -3,8 +3,9 @@
 import { useEffect, useId, useRef, useState, type ReactNode } from "react";
 
 import styles from "./Pill.module.css";
+import { swatchStyle, type Swatch } from "@/lib/brand";
 
-type Tone = "violet" | "green" | "sand";
+type Tone = "violet" | "green" | "sand" | "stone";
 
 export type Option<T extends string> = {
   value: T;
@@ -23,6 +24,7 @@ export function Select<T extends string>({
   tone = "violet",
   label,
   custom,
+  swatch,
   children,
 }: {
   value: T;
@@ -31,6 +33,8 @@ export function Select<T extends string>({
   tone?: Tone;
   label: string;
   custom?: Custom;
+  /// Overrides the tone with a token or protocol color.
+  swatch?: Swatch;
   children?: ReactNode;
 }) {
   const [open, setOpen] = useState(false);
@@ -56,7 +60,8 @@ export function Select<T extends string>({
     <span className={styles.anchor} ref={ref}>
       <button
         type="button"
-        className={`${styles.pill} ${styles[tone]}`}
+        className={`${styles.pill} ${swatch ? styles.swatch : styles[tone]}`}
+        style={swatch && swatchStyle(swatch)}
         aria-haspopup="listbox"
         aria-expanded={open}
         aria-controls={listId}
@@ -139,6 +144,7 @@ export function Field({
   label,
   numeric,
   hint,
+  swatch,
 }: {
   value: string;
   onChange: (value: string) => void;
@@ -147,10 +153,14 @@ export function Field({
   label: string;
   numeric?: boolean;
   hint?: string;
+  swatch?: Swatch;
 }) {
   const width = Math.max((value || placeholder || "").length, numeric ? 1 : 4);
   return (
-    <span className={`${styles.pill} ${styles[tone]} ${styles.field}`}>
+    <span
+      className={`${styles.pill} ${swatch ? styles.swatch : styles[tone]} ${styles.field}`}
+      style={swatch && swatchStyle(swatch)}
+    >
       <input
         aria-label={label}
         value={value}
@@ -170,8 +180,15 @@ export function Field({
   );
 }
 
-export function Fixed({ children, tone = "violet" }: { children: ReactNode; tone?: Tone }) {
-  return <span className={`${styles.pill} ${styles[tone]} ${styles.fixed}`}>{children}</span>;
+export function Fixed({ children, tone = "violet", swatch }: { children: ReactNode; tone?: Tone; swatch?: Swatch }) {
+  return (
+    <span
+      className={`${styles.pill} ${swatch ? styles.swatch : styles[tone]} ${styles.fixed}`}
+      style={swatch && swatchStyle(swatch)}
+    >
+      {children}
+    </span>
+  );
 }
 
 function Chevron() {

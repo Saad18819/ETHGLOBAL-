@@ -5,6 +5,7 @@ import styles from "./Sentence.module.css";
 import { sources } from "@/lib/chains";
 import { liquidationDrop, MAX_LEVERAGE } from "@/lib/loop";
 import { holdingOf, short, type Holding } from "@/lib/balances";
+import { protocolOf, protocols, tokenColors } from "@/lib/brand";
 import { percent, usd, type Vault } from "@/lib/markets";
 import {
   assets,
@@ -40,6 +41,8 @@ export function Sentence({
   const totalOf = (asset: AssetId) =>
     holdings?.filter((h) => h.asset === asset).reduce((sum, h) => sum + Number(h.amount), 0) ?? 0;
   const held = holdingOf(holdings, plan.asset, plan.from);
+  const token = tokenColors[plan.asset];
+  const brand = protocols[protocolOf[plan.next]];
   const set = (patch: Partial<Plan>) => onChange(normalizePlan({ ...plan, ...patch }));
   const viaRouter = routeOf(plan) === "router";
 
@@ -52,9 +55,11 @@ export function Sentence({
         value={plan.amount}
         onChange={(amount) => set({ amount })}
         hint={held ? `of ${short(held.amount)}` : undefined}
+        swatch={token}
       />{" "}
       <Select<AssetId>
         label="Asset"
+        swatch={token}
         value={plan.asset}
         options={(Object.keys(assets) as AssetId[]).map((id) => ({
           value: id,
@@ -68,6 +73,7 @@ export function Sentence({
       from{" "}
       <Select<SourceId>
         label="From"
+        tone="stone"
         value={plan.from}
         options={assets[plan.asset].sources.map((id) => {
           const holding = holdingOf(holdings, plan.asset, id);
@@ -77,11 +83,11 @@ export function Sentence({
       />{" "}
       to Arc, <span className={styles.andthen}>and then</span>{" "}
       {locked ? (
-        <Fixed tone="green">{stepOf(plan.next).verb}</Fixed>
+        <Fixed swatch={brand}>{stepOf(plan.next).verb}</Fixed>
       ) : (
         <Select<NextId>
           label="And then"
-          tone="green"
+          swatch={brand}
           value={plan.next}
           options={nextSteps.map((step) => ({ value: step.id, label: step.verb.replace(/ (as|on|to)$/, "") }))}
           onChange={(next) => set({ next })}
@@ -94,7 +100,7 @@ export function Sentence({
           {" "}
           <Select<HoldToken>
             label="Hold as"
-            tone="green"
+            swatch={tokenColors[plan.hold]}
             value={plan.hold}
             options={(["EURC", "cirBTC"] as const)
               .filter((token) => token !== plan.asset)
@@ -108,7 +114,7 @@ export function Sentence({
           {" "}
           <Select<Range>
             label="Range"
-            tone="sand"
+            swatch={brand}
             value={plan.range}
             options={(Object.keys(ranges) as Range[]).map((range) => ({ value: range, label: ranges[range] }))}
             onChange={(range) => set({ range })}
@@ -120,7 +126,7 @@ export function Sentence({
           {" "}
           <Select<string>
             label="Vault"
-            tone="sand"
+            swatch={brand}
             value={plan.vault || vaults[0].address}
             options={vaults.map((vault) => ({
               value: vault.address,
@@ -141,7 +147,7 @@ export function Sentence({
           {" "}
           <Select<string>
             label="Leverage"
-            tone="green"
+            swatch={brand}
             value={plan.leverage}
             options={["1.5", "2", "2.5", "3", "3.5", "4"].map((value) => ({
               value,
@@ -170,15 +176,21 @@ export function Sentence({
             />
           )}{" "}
           {locked ? (
-            <Fixed tone="green">
+            <Fixed swatch={tokenColors[plan.payToken]}>
               {plan.payAmount} {plan.payToken}
             </Fixed>
           ) : (
             <>
-              <Field label="Pay amount" numeric value={plan.payAmount} onChange={(payAmount) => set({ payAmount })} />{" "}
+              <Field
+                label="Pay amount"
+                numeric
+                value={plan.payAmount}
+                onChange={(payAmount) => set({ payAmount })}
+                swatch={tokenColors[plan.payToken]}
+              />{" "}
               <Select<PayToken>
                 label="Pay in"
-                tone="green"
+                swatch={tokenColors[plan.payToken]}
                 value={plan.payToken}
                 options={(viaRouter ? (["USDC", "EURC"] as const) : (["USDC", "EURC", "cirBTC"] as const)).map(
                   (token) => ({ value: token, label: token }),

@@ -3,6 +3,7 @@ import { AppKit } from "@circle-fin/app-kit";
 import { encodeAbiParameters, keccak256, toEventSelector, zeroAddress } from "viem";
 
 import type { Markets } from "@/lib/markets";
+import { poolStats, type PoolSpec } from "@/lib/mainnet";
 
 const kit = new AppKit();
 
@@ -56,6 +57,48 @@ async function poolVolume(): Promise<{ volume7d: number; swaps7d: number }> {
   return { volume7d, swaps7d };
 }
 
+/// Uniswap v4 pools on Arc mainnet without hooks between real assets. Probing every token Morpho lists on Arc
+/// against USDC and EURC across all fee tiers finds only this one (plus native USDC against its own ERC20).
+const MAINNET_POOLS: PoolSpec[] = [
+  {
+    id: "0xeb0fd02fb8044d5514fb6e165ee134fd547eff0378bb33b76f4b81d8b03bd1ae",
+    token0: { symbol: "USDC", address: "0x3600000000000000000000000000000000000000", decimals: 6 },
+    token1: { symbol: "EURC", address: "0xbEf5f6d51CB62b58e6A8f77868681825C6fe21c1", decimals: 6 },
+    fee: 500,
+  },
+];
+const MAINNET_TTL = 15 * 60_000;
+let mainnetCache: { at: number; data: Markets["mainnet"] } | undefined;
+
+/// Real numbers from Arc mainnet: the best Morpho vaults, liquid borrow markets and Uniswap pool APRs.
+async function mainnet(prices: Record<string, number>): Promise<Markets["mainnet"]> {
+  if (mainnetCache && Date.now() - mainnetCache.at < MAINNET_TTL) return mainnetCache.data;
+  const usd = (symbol: string) => prices[symbol] ?? (symbol === "USDC" ? 1 : 0);
+  const [vaults, markets, pools] = await Promise.all([
+    kit.earn.exploreVaults({ chain: "Arc", pageSize: 100, sortBy: "apy" }),
+    kit.borrow.exploreMarkets({ chain: "Arc" }),
+    Promise.all(MAINNET_POOLS.map((spec) => poolStats(spec, usd).catch(() => undefined))),
+  ]);
+  const data: Markets["mainnet"] = {
+    vaults: vaults.vaults
+      .filter((vault) => vault.status === "active" && Number(vault.liquidity) > 100_000)
+      .sort((a, b) => b.currentApy - a.currentApy)
+      .slice(0, 6)
+      .map((vault) => ({ name: vault.name, apy: vault.currentApy, liquidity: Number(vault.liquidity) })),
+    markets: markets.markets
+      .filter((market) => Number(market.liquidity?.amount ?? 0) > 1_000)
+      .map((market) => ({
+        pair: `${market.collateralAsset.symbol}/${market.loanAsset.symbol}`,
+        borrowApy: market.borrowApy ?? 0,
+        lltv: market.lltv ?? 0,
+        liquidity: Number(market.liquidity?.amount ?? 0),
+      })),
+    pools: pools.filter((pool) => pool !== undefined),
+  };
+  mainnetCache = { at: Date.now(), data };
+  return data;
+}
+
 /// Live Earn vaults, Borrow markets, USD prices and pool volume for Arc testnet.
 export async function GET() {
   if (cached && Date.now() - cached.at < TTL) return Response.json(cached.data);
@@ -103,6 +146,9 @@ export async function GET() {
       cirBTC: price(eth, ETHEREUM_PRICES.cirBTC),
     },
     pool,
+    mainnet: await mainnet({ USDC: 1, EURC: price(arc, "0x89b50855aa3be2f677cd6303cec089b5f319d72a") }).catch(
+      () => ({ vaults: [], markets: [], pools: [] }),
+    ),
     asOf: new Date().toISOString(),
   };
 
