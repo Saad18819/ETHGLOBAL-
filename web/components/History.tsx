@@ -1,5 +1,6 @@
 "use client";
 
+import { useState } from "react";
 import Link from "next/link";
 import { useQuery } from "@tanstack/react-query";
 import { useConnection } from "wagmi";
@@ -28,6 +29,10 @@ const inferred: Record<Purpose, string> = {
   loop: "looped it on Morpho",
   back: "sent it back from Arc",
 };
+
+/// Moves per page, and how many of the latest are kept at all.
+const PAGE = 10;
+const LIMIT = 100;
 
 /// A local move explains an arrival when it started up to this long before the mint.
 const MATCH = 30 * 60_000;
@@ -59,6 +64,7 @@ export function History() {
       return ((await response.json()) as { activity?: Activity[] }).activity ?? [];
     },
   });
+  const [page, setPage] = useState(0);
 
   if (!address) return null;
 
@@ -106,6 +112,11 @@ export function History() {
     });
   }
   rows.sort((a, b) => b.at - a.at);
+  // The latest moves only, a page at a time, so the list under the move never grows without end.
+  const kept = rows.slice(0, LIMIT);
+  const pages = Math.max(1, Math.ceil(kept.length / PAGE));
+  const current = Math.min(page, pages - 1);
+  const visible = kept.slice(current * PAGE, current * PAGE + PAGE);
 
   return (
     <section className={styles.history}>
@@ -113,7 +124,7 @@ export function History() {
       {activity.isError && <p className={styles.muted}>{activity.error.message}.</p>}
       {activity.isFetched && rows.length === 0 && <p className={styles.muted}>Nothing moved yet.</p>}
       <ul className={styles.list}>
-        {rows.map((row) => {
+        {visible.map((row) => {
           const brand = protocols[row.purpose === "back" ? "arc" : protocolOf[row.purpose]];
           return (
             <li key={row.key} className={styles.entry}>
@@ -149,6 +160,19 @@ export function History() {
           );
         })}
       </ul>
+      {pages > 1 && (
+        <div className={styles.pager}>
+          <button type="button" disabled={current === 0} onClick={() => setPage(current - 1)}>
+            Newer
+          </button>
+          <span>
+            Page {current + 1} of {pages}
+          </span>
+          <button type="button" disabled={current === pages - 1} onClick={() => setPage(current + 1)}>
+            Older
+          </button>
+        </div>
+      )}
     </section>
   );
 }
