@@ -39,17 +39,42 @@ export function usePool() {
   return useQuery({ queryKey: ["eurc-pool"], queryFn: readPool, refetchInterval: 30_000 });
 }
 
-export type EurcPool = Awaited<ReturnType<typeof readPool>>;
+/// Uniswap's v4 Quoter on Arc, the same address on testnet and mainnet.
+const quoter = "0x8Dc178eFB8111BB0973Dd9d722ebeFF267c98F94";
+const quoterAbi = parseAbi([
+  "function quoteExactOutputSingle(((address,address,uint24,int24,address) poolKey, bool zeroForOne, uint128 exactAmount, bytes hookData) params) view returns (uint256 amountIn, uint256 gasEstimate)",
+]);
 
-/// USDC the pool takes for exactly `eurc` out: its fee plus the price moving along the curve, with the
-/// in-range liquidity as it is now. Infinity when that liquidity can not cover the amount.
-export function usdcForEurc(eurc: number, pool: Pick<EurcPool, "sqrtPrice" | "liquidity">) {
-  const liquidity = Number(pool.liquidity);
-  // USDC is token0 and EURC token1, so taking EURC out lowers the square root price by out / L.
-  const after = pool.sqrtPrice - (eurc * 1e6) / liquidity;
-  if (!(liquidity > 0) || !(after > 0)) return Infinity;
-  const usdc = liquidity * (1 / after - 1 / pool.sqrtPrice);
-  return usdc / (1 - eurcPool.fee / 1e6) / 1e6;
+/// USDC the pool takes for exactly `eurc` out, quoted by simulating the swap: fee and price impact
+/// across every tick included.
+export async function usdcForEurc(eurc: bigint): Promise<bigint> {
+  const [amountIn] = await readContract(config, {
+    chainId: arc.chainId,
+    address: quoter,
+    abi: quoterAbi,
+    functionName: "quoteExactOutputSingle",
+    args: [
+      {
+        poolKey: [arc.usdc, arc.eurc, eurcPool.fee, eurcPool.tickSpacing, zeroAddress],
+        zeroForOne: true,
+        exactAmount: eurc,
+        hookData: "0x",
+      },
+    ],
+  });
+  return amountIn;
+}
+
+/// What an exact EURC payment costs in USDC on the pool, kept fresh while the user looks at it.
+export function useEurcCost(eurc: string, enabled: boolean) {
+  const amount = Number(eurc) > 0 ? BigInt(Math.round(Number(eurc) * 1e6)) : 0n;
+  return useQuery({
+    queryKey: ["eurc-cost", amount.toString()],
+    queryFn: async () => Number(await usdcForEurc(amount)) / 1e6,
+    enabled: enabled && amount > 0n,
+    refetchInterval: 15_000,
+    retry: false,
+  });
 }
 
 /// EURC per USDC from the pool's spot price.

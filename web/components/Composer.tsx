@@ -35,7 +35,7 @@ import {
 } from "@/lib/plan";
 import { quoteToUsdc, quoteUsdcInto, swapToUsdc } from "@/lib/uniswap";
 import { marketSqrtPriceX96, poolById, usePoolState, type PoolState } from "@/lib/pools";
-import { usePool, usdcForEurc, type EurcPool } from "@/lib/quote";
+import { useEurcCost, usePool } from "@/lib/quote";
 
 type Run =
   | ({ kind: "router"; outcome: string } & RouterResult)
@@ -120,6 +120,11 @@ export function Composer({
   const vault = vaults.some((v) => v.address === base.vault) ? base.vault : (vaults[0]?.address ?? "");
   const prices = markets.data?.prices;
   const unsized = { ...base, vault };
+  // Through our contracts an EURC payment is bought on the Arc pool: what that exact amount costs there.
+  const eurcCost = useEurcCost(
+    unsized.payAmount,
+    unsized.next === "pay" && unsized.payToken === "EURC" && routeOf(unsized) === "router",
+  );
   const domain = sources[unsized.from].cctpDomain;
   const destination = sources[unsized.to].cctpDomain;
   const fees = useQuery({
@@ -134,7 +139,7 @@ export function Composer({
       ? {
           ...unsized,
           amount:
-            amountFor(unsized, pricesFor(unsized, prices, pool.data), forwarderFee(unsized, fees.data), bridgeFee(unsized, fees.data)) ??
+            amountFor(unsized, pricesFor(unsized, prices, eurcCost.data), forwarderFee(unsized, fees.data), bridgeFee(unsized, fees.data)) ??
             unsized.amount,
         }
       : unsized;
@@ -173,7 +178,7 @@ export function Composer({
   const bridgeBps = (sized.speed === "fast" ? fees.data?.fast : fees.data?.standard) ?? 0;
   const arrivingUsd = grossUsd * (1 - bridgeBps / 10_000) - forwardFee;
   const keep = 0.999 * slippage;
-  const payPrice = pricesFor(sized, prices, pool.data)?.[sized.payToken] ?? NaN;
+  const payPrice = pricesFor(sized, prices, eurcCost.data)?.[sized.payToken] ?? NaN;
   const maxPay = (arrivingUsd * keep) / marginFor(sized) / payPrice;
   // Typed the amount moved: they get the most it covers.
   const plan =
@@ -207,6 +212,10 @@ export function Composer({
       ? `No Uniswap quote from USDC to ${plan.hold} on ${sources[plan.to].label}: ${destinationQuote.error.message}`
     : uniswap && sourceQuote.error
       ? `No Uniswap quote from ${plan.asset} to USDC on ${sources[plan.from].label}: ${sourceQuote.error.message}`
+    : eurcCost.isError
+      ? `The EURC pool on Arc can not cover ${plan.payAmount} EURC right now`
+    : eurcCost.isLoading
+      ? "Pricing EURC on Arc"
       : findBlocker(plan, route, amount, payPrice / (prices?.USDC ?? 1), slippage, maxPay);
 
   async function go() {
@@ -251,7 +260,7 @@ export function Composer({
         replyTo,
         poolTick: pool.data?.tick,
         rate: pool.data?.rate,
-        eurc: pool.data,
+        eurcCost: eurcCost.data,
         pool: chosenPool.data && liquidityTarget(chosenPool.data, markets.data?.prices),
         minOut:
           plan.next === "hold" && plan.hold === "EURC" && pool.data
@@ -508,10 +517,10 @@ function marginFor(plan: Plan) {
 
 /// Prices as the move will meet them. Through our contracts, EURC is bought on the Arc Uniswap pool,
 /// so its price is what the pool takes for this exact amount: fee and price impact included.
-function pricesFor(plan: Plan, prices: Record<string, number> | undefined, pool: EurcPool | undefined) {
-  if (!prices || routeOf(plan) !== "router" || plan.payToken !== "EURC" || !pool) return prices;
-  const pay = Number(plan.payAmount) || 1;
-  return { ...prices, EURC: ((prices.USDC ?? 1) * usdcForEurc(pay, pool)) / pay };
+function pricesFor(plan: Plan, prices: Record<string, number> | undefined, eurcCost: number | undefined) {
+  const pay = Number(plan.payAmount);
+  if (!prices || routeOf(plan) !== "router" || plan.payToken !== "EURC" || !eurcCost || !(pay > 0)) return prices;
+  return { ...prices, EURC: ((prices.USDC ?? 1) * eurcCost) / pay };
 }
 
 /// The share CCTP keeps for the chosen speed, as a fraction.
