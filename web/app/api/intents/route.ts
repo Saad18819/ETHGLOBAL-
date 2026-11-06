@@ -3,7 +3,7 @@ import { createPublicClient, decodeFunctionData, http, isAddress, isHex, parseEv
 import { sources, type SourceId } from "@/lib/chains";
 import { arcChain, ARC_RPC } from "@/lib/config";
 import { arc, deployed, routerAbi, settlementAbi } from "@/lib/contracts";
-import { orderKey } from "@/lib/flows";
+import { orderKey } from "@/lib/order";
 import { addIntent, aggregate, readIntents, updateStatuses, type Intent } from "@/lib/intents";
 import { tokenBySymbol } from "@/lib/tokens";
 
@@ -48,8 +48,7 @@ async function settlementStatus(intent: Intent): Promise<Intent["status"] | unde
   const receipt = await client.getTransactionReceipt({ hash: intent.tx as Hex });
   const [sent] = parseEventLogs({ abi: routerAbi, eventName: "Sent", logs: receipt.logs });
   if (!sent) return undefined;
-  // A decoded intent has the general shape; orderKey's type is the app's narrower one, hashed the same way.
-  const key = orderKey(call.args[0] as Parameters<typeof orderKey>[0], sent.args.id, tx.from);
+  const key = orderKey(call.args[0], sent.args.id, tx.from);
   const order = await clientFor("arc").readContract({
     address: deployed.settlement,
     abi: settlementAbi,

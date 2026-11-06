@@ -5,23 +5,10 @@ import { readContract } from "wagmi/actions";
 import { config } from "./config";
 import { arc } from "./contracts";
 import type { AssetId } from "./plan";
-import { arcSwappable, tokenBySymbol } from "./tokens";
+import { pools, type PoolPair } from "./pairs";
+import { tokenBySymbol } from "./tokens";
 
-/// Uniswap v4 pools on Arc the app can add liquidity to. Each side must be something Circle Swap can buy on
-/// Arc, so any asset the user moves can be split into the pair. Hookless, at the usual tier for the pair.
-const candidates: { a: AssetId; b: AssetId; fee: number; tickSpacing: number }[] = [
-  { a: "USDC", b: "EURC", fee: 500, tickSpacing: 10 },
-  { a: "USDC", b: "cirBTC", fee: 3000, tickSpacing: 60 },
-  { a: "EURC", b: "cirBTC", fee: 3000, tickSpacing: 60 },
-  { a: "USDC", b: "WETH", fee: 3000, tickSpacing: 60 },
-  { a: "cirBTC", b: "WETH", fee: 3000, tickSpacing: 60 },
-];
-
-export type PoolPair = { id: string; a: AssetId; b: AssetId; fee: number; tickSpacing: number };
-
-export const pools: PoolPair[] = candidates
-  .filter((pair) => arcSwappable.includes(pair.a) && arcSwappable.includes(pair.b))
-  .map((pair) => ({ ...pair, id: `${pair.a}/${pair.b}` }));
+export { pools, type PoolPair } from "./pairs";
 
 export const poolById = (id: string) => pools.find((pool) => pool.id === id) ?? pools[0];
 
