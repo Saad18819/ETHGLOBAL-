@@ -1,12 +1,20 @@
 .page {
-  max-width: 1080px;
+  max-width: 1120px;
   margin: 0 auto;
-  padding: 56px 40px 96px;
+  padding: 40px 40px 72px;
+}
+
+.top {
+  display: flex;
+  align-items: flex-end;
+  justify-content: space-between;
+  gap: 24px;
+  flex-wrap: wrap;
 }
 
 .title {
-  margin: 0 0 8px;
-  font-size: 40px;
+  margin: 0 0 4px;
+  font-size: 34px;
   font-weight: 600;
   letter-spacing: -0.03em;
 }
@@ -14,155 +22,153 @@
 .muted {
   margin: 0;
   color: var(--muted);
-  font-size: 14px;
+  font-size: 13px;
 }
 
-.tiles {
+/* Totals read as one line of figures, not three boxes. */
+.totals {
+  display: flex;
+  gap: 32px;
+  margin: 0;
+}
+
+.totals div {
   display: grid;
-  grid-template-columns: repeat(3, minmax(0, 1fr));
-  gap: 12px;
-  margin-top: 32px;
+  gap: 2px;
 }
 
-.tile {
-  display: grid;
-  gap: 4px;
-  padding: 18px 20px;
-  border: 1px solid var(--line);
-  border-radius: var(--radius);
-  background: var(--surface);
+.totals dt {
+  color: var(--muted);
+  font-size: 12px;
 }
 
-.tileValue {
-  font-size: 30px;
+.totals dd {
+  margin: 0;
+  font-size: 24px;
   font-weight: 600;
   letter-spacing: -0.02em;
   font-variant-numeric: tabular-nums;
 }
 
-.tileLabel {
-  color: var(--muted);
-  font-size: 13px;
+.cards {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 12px;
+  margin-top: 24px;
 }
 
-.section {
-  margin-top: 48px;
+.card {
+  padding: 14px 18px 16px;
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  background: var(--surface);
 }
 
-.heading {
-  margin: 0 0 16px;
-  font-size: 17px;
+.cardTitle {
+  margin: 0 0 10px;
+  font-size: 15px;
   font-weight: 600;
 }
 
-.pair {
+/* The chart takes three quarters of the card, the legend the rest. */
+.cardBody {
   display: grid;
-  grid-template-columns: repeat(2, minmax(0, 1fr));
-  gap: 32px;
+  grid-template-columns: 3fr 2fr;
+  gap: 12px;
+  align-items: center;
 }
 
-.chart {
-  margin: 0;
+.ring {
+  display: block;
+  width: 100%;
+  max-width: 150px;
+  aspect-ratio: 1;
+  margin: 0 auto;
+  overflow: visible;
 }
 
-.caption {
-  margin-bottom: 10px;
-  color: var(--muted);
+/* A 2px gap of the card surface between neighbouring slices. */
+.slice {
+  stroke: var(--surface);
+  stroke-width: 2;
+  transition: opacity 140ms ease;
+}
+
+.slice[data-dim] {
+  opacity: 0.3;
+}
+
+.centerValue {
+  fill: var(--ink);
   font-size: 13px;
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
 }
 
-.bars {
+.centerLabel {
+  fill: var(--muted);
+  font-size: 7px;
+}
+
+.legend {
   display: grid;
   gap: 2px;
   margin: 0;
   padding: 0;
   list-style: none;
-}
-
-.bar {
-  position: relative;
-  display: grid;
-  grid-template-columns: 150px 1fr 104px;
-  gap: 12px;
-  align-items: center;
-  padding: 7px 0;
-  border-radius: 6px;
   font-size: 14px;
-  outline: none;
 }
 
-.label {
-  display: inline-flex;
-  align-items: center;
-  gap: 6px;
-  min-width: 0;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
+.legend li {
+  display: grid;
+  grid-template-columns: 10px minmax(0, 1fr);
+  grid-template-areas:
+    "swatch label"
+    ". value";
+  column-gap: 8px;
+  align-items: start;
+  padding: 5px 6px;
+  border-radius: 6px;
 }
 
-.tag {
-  padding: 1px 7px;
-  border-radius: 999px;
-  background: var(--pill-bg);
-  color: var(--pill-ink);
-  font-size: 11px;
+.legend li[data-active] {
+  background: var(--bg);
 }
 
-/* One series per chart, so one hue: the app's violet ink. */
-.track {
+.swatch {
+  grid-area: swatch;
+  margin-top: 4px;
+  width: 10px;
   height: 10px;
-  border-radius: 0 4px 4px 0;
-  background: var(--line);
+  border-radius: 3px;
 }
 
-.fill {
-  display: block;
-  height: 100%;
-  min-width: 2px;
-  border-radius: 0 4px 4px 0;
-  background: var(--violet-ink);
+.legendLabel {
+  grid-area: label;
+  line-height: 1.25;
 }
 
-.value {
-  display: flex;
-  justify-content: flex-end;
-  gap: 8px;
+.legendValue {
+  grid-area: value;
+  color: var(--muted);
+  font-size: 13px;
   font-variant-numeric: tabular-nums;
 }
 
 .share {
-  min-width: 34px;
   color: var(--muted);
   text-align: right;
+  font-variant-numeric: tabular-nums;
 }
 
-.tip {
-  position: absolute;
-  z-index: 5;
-  bottom: calc(100% + 4px);
-  left: 150px;
-  padding: 6px 10px;
-  border: 1px solid var(--line);
-  border-radius: 8px;
-  background: var(--surface);
-  box-shadow: 0 8px 24px rgba(23, 22, 27, 0.08);
-  color: var(--ink);
-  font-size: 12px;
-  white-space: nowrap;
-  opacity: 0;
-  pointer-events: none;
-  transition: opacity 120ms ease;
+.section {
+  margin-top: 28px;
 }
 
-.bar:hover .tip,
-.bar:focus-visible .tip {
-  opacity: 1;
-}
-
-.bar:hover .fill,
-.bar:focus-visible .fill {
-  filter: brightness(1.25);
+.heading {
+  margin: 0 0 8px;
+  font-size: 14px;
+  font-weight: 600;
 }
 
 .tableWrap {
@@ -224,21 +230,24 @@
   color: var(--faint);
 }
 
-@media (max-width: 760px) {
-  .page {
-    padding: 32px 16px 64px;
+@media (max-width: 1000px) {
+  .cards {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
   }
+}
 
-  .tiles,
-  .pair {
+@media (max-width: 640px) {
+  .cards {
     grid-template-columns: 1fr;
   }
+}
 
-  .bar {
-    grid-template-columns: 110px 1fr 96px;
+@media (max-width: 640px) {
+  .page {
+    padding: 28px 16px 56px;
   }
 
-  .tip {
-    left: 0;
+  .totals {
+    gap: 20px;
   }
 }
