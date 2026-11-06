@@ -10,5 +10,11 @@
       "name": "v5.7.0",
       "rev": "cab19933c33c2ad1d4c7a84864a3601dddfd16f3"
     }
+  },
+  "lib/permit2": {
+    "rev": "cc56ad0f3439c502c246fc5cfcc3db92bb8b7219"
+  },
+  "lib/v4-core": {
+    "rev": "bea7f6d1c11cd5dc4f0d5151ffa37a1c239feee6"
   }
 }
