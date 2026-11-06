@@ -92,7 +92,7 @@ export function Select<T extends string>({
                 }}
               >
                 <span className={styles.optionLabel}>
-                  {option.icon && <img className={styles.icon} src={option.icon} alt="" width={18} height={18} />}
+                  {option.icon && <img className={styles.icon} src={option.icon} alt="" width={24} height={24} />}
                   {option.label}
                 </span>
                 {option.hint && <span className={styles.optionHint}>{option.hint}</span>}

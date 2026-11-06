@@ -193,9 +193,9 @@ export const nextSteps: NextStep[] = [
   },
   {
     id: "loop",
-    title: "Loop BTC",
+    title: "Leverage BTC",
     body: `Get up to ${MAX_LEVERAGE}x BTC exposure, using a loan on Morpho.`,
-    verb: "loop cirBTC to",
+    verb: "leverage cirBTC to",
   },
 ];
 

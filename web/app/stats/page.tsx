@@ -41,7 +41,7 @@ const purposeNames: Record<string, string> = {
   hold: "Hold",
   pool: "Uniswap pool",
   lend: "Lend",
-  loop: "Loop",
+  loop: "Leverage",
   back: "Bridge back",
 };
 

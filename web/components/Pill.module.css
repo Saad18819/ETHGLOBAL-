@@ -183,13 +183,13 @@ button.pill:hover {
 .optionLabel {
   display: inline-flex;
   align-items: center;
-  gap: 8px;
+  gap: 10px;
 }
 
 .icon {
   flex: none;
-  width: 18px;
-  height: 18px;
+  width: 24px;
+  height: 24px;
   border-radius: 50%;
 }
 
