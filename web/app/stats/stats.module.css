@@ -1,12 +1,20 @@
 .page {
-  max-width: 1080px;
+  max-width: 1120px;
   margin: 0 auto;
-  padding: 56px 40px 96px;
+  padding: 40px 40px 72px;
+}
+
+.top {
+  display: flex;
+  align-items: flex-end;
+  justify-content: space-between;
+  gap: 24px;
+  flex-wrap: wrap;
 }
 
 .title {
-  margin: 0 0 8px;
-  font-size: 40px;
+  margin: 0 0 4px;
+  font-size: 34px;
   font-weight: 600;
   letter-spacing: -0.03em;
 }
@@ -14,134 +22,147 @@
 .muted {
   margin: 0;
   color: var(--muted);
-  font-size: 14px;
+  font-size: 13px;
 }
 
-.tiles {
+/* Totals read as one line of figures, not three boxes. */
+.totals {
+  display: flex;
+  gap: 32px;
+  margin: 0;
+}
+
+.totals div {
   display: grid;
-  grid-template-columns: repeat(3, minmax(0, 1fr));
-  gap: 12px;
-  margin-top: 32px;
+  gap: 2px;
 }
 
-.tile {
-  display: grid;
-  gap: 4px;
-  padding: 18px 20px;
-  border: 1px solid var(--line);
-  border-radius: var(--radius);
-  background: var(--surface);
+.totals dt {
+  color: var(--muted);
+  font-size: 12px;
 }
 
-.tileValue {
-  font-size: 30px;
+.totals dd {
+  margin: 0;
+  font-size: 24px;
   font-weight: 600;
   letter-spacing: -0.02em;
   font-variant-numeric: tabular-nums;
 }
 
-.tileLabel {
-  color: var(--muted);
-  font-size: 13px;
+.controls {
+  display: flex;
+  margin: 28px 0 14px;
 }
 
-.section {
-  margin-top: 48px;
+.cards {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 12px;
 }
 
-.heading {
-  margin: 0 0 16px;
-  font-size: 17px;
+.card {
+  padding: 14px 16px 16px;
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  background: var(--surface);
+}
+
+.cardTitle {
+  margin: 0 0 10px;
+  font-size: 14px;
   font-weight: 600;
 }
 
-.breakdown {
+.cardBody {
   display: grid;
-  grid-template-columns: 220px 220px minmax(0, 1fr);
-  gap: 32px;
-  align-items: start;
-}
-
-.donut {
-  margin: 0;
-}
-
-.caption {
-  margin-bottom: 6px;
-  color: var(--muted);
-  font-size: 13px;
+  grid-template-columns: 92px minmax(0, 1fr);
+  gap: 14px;
+  align-items: center;
 }
 
 .ring {
   display: block;
-  width: 100%;
-  max-width: 220px;
+  width: 92px;
+  height: 92px;
   overflow: visible;
 }
 
-/* A 2px gap of the page surface between neighbouring slices. */
+/* A 2px gap of the card surface between neighbouring slices. */
 .slice {
-  stroke: var(--bg);
+  stroke: var(--surface);
   stroke-width: 2;
-  transition:
-    opacity 140ms ease,
-    d 140ms ease;
-  cursor: default;
+  transition: opacity 140ms ease;
 }
 
 .slice[data-dim] {
-  opacity: 0.35;
+  opacity: 0.3;
 }
 
 .centerValue {
   fill: var(--ink);
-  font-size: 12px;
+  font-size: 14px;
   font-weight: 600;
   font-variant-numeric: tabular-nums;
 }
 
 .centerLabel {
   fill: var(--muted);
-  font-size: 7px;
+  font-size: 9px;
 }
 
 .legend {
-  width: 100%;
-  border-collapse: collapse;
-  font-size: 14px;
+  display: grid;
+  gap: 2px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  font-size: 13px;
 }
 
-.legend th {
-  padding: 0 0 8px;
-  color: var(--muted);
-  font-size: 12px;
-  font-weight: 500;
+.legend li {
+  display: grid;
+  grid-template-columns: 10px minmax(0, 1fr) auto;
+  gap: 8px;
+  align-items: center;
+  padding: 3px 6px;
+  border-radius: 6px;
 }
 
-.legend td {
-  padding: 7px 0;
-  border-top: 1px solid var(--line);
-  white-space: nowrap;
-}
-
-.legend tr[data-active] td {
-  background: color-mix(in srgb, var(--line) 55%, transparent);
+.legend li[data-active] {
+  background: var(--bg);
 }
 
 .swatch {
-  display: inline-block;
   width: 10px;
   height: 10px;
-  margin-right: 8px;
   border-radius: 3px;
-  vertical-align: -1px;
+}
+
+.legendLabel {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.legendValue {
+  font-variant-numeric: tabular-nums;
 }
 
 .share {
-  display: inline-block;
-  min-width: 34px;
   color: var(--muted);
   text-align: right;
+  font-variant-numeric: tabular-nums;
+}
+
+.section {
+  margin-top: 28px;
+}
+
+.heading {
+  margin: 0 0 8px;
+  font-size: 14px;
+  font-weight: 600;
 }
 
 .tableWrap {
@@ -203,21 +224,18 @@
   color: var(--faint);
 }
 
-@media (max-width: 760px) {
-  .page {
-    padding: 32px 16px 64px;
-  }
-
-  .tiles {
+@media (max-width: 960px) {
+  .cards {
     grid-template-columns: 1fr;
   }
+}
 
-  .breakdown {
-    grid-template-columns: repeat(2, minmax(0, 1fr));
-    gap: 16px;
+@media (max-width: 640px) {
+  .page {
+    padding: 28px 16px 56px;
   }
 
-  .legend {
-    grid-column: 1 / -1;
+  .totals {
+    gap: 20px;
   }
 }

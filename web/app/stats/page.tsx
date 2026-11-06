@@ -4,60 +4,56 @@ import { useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 
 import styles from "./stats.module.css";
-import { sourceIds, sources, type SourceId } from "@/lib/chains";
+import { Segmented } from "@/components/Segmented";
+import { protocols, tokenColor } from "@/lib/brand";
+import { sources, type SourceId } from "@/lib/chains";
 import { purposeTitle } from "@/lib/history";
 import type { Intent, Slice, Stats } from "@/lib/intents";
 import { usd } from "@/lib/markets";
-import { nextSteps } from "@/lib/plan";
-import { tokens } from "@/lib/tokens";
 
 const PAGE = 10;
 
-/// The fixed order each dimension's colours are assigned in: the app's own order of use cases, chains and
-/// tokens.
-const purposeOrder = [...nextSteps.map((step) => step.id as string), "back"];
-const chainOrder = [...sourceIds, "arc"];
-const tokenOrder = tokens.map((token) => token.symbol);
+type Measure = "volume" | "count";
 
-const chainLabel = (key: string) => (key === "arc" ? "Arc" : (sources[key as SourceId]?.label ?? key));
-const when = (at: number) =>
-  new Date(at).toLocaleString("en-GB", { day: "numeric", month: "short", hour: "2-digit", minute: "2-digit" });
-const short = (address: string) => `${address.slice(0, 6)}…${address.slice(-4)}`;
-const amount = (value: number) => value.toLocaleString("en-US", { maximumFractionDigits: 6 });
-
-/// The reference categorical palette from the dataviz guidelines, in its validated order: neighbouring
-/// slices stay distinct for colour-blind readers. A category's colour comes from its fixed place in the
-/// dimension, never from its rank, so it is the same on both charts and does not change as data moves.
-const PALETTE = ["#2a78d6", "#eb6834", "#1baf7a", "#eda100", "#e87ba4", "#008300", "#6250d6", "#e34948"];
-const OTHER = "#b9b6bf";
-const OTHER_KEY = "other";
+/// Colours in the app's own language: use cases in their protocol's colour (two shades where a protocol
+/// does two things), chains and tokens in their own brand colours. Each category keeps its colour on
+/// every chart and every refresh.
+const purposeColors: Record<string, string> = {
+  pay: protocols.arc.accent,
+  hold: "#5a6a9c",
+  pool: protocols.uniswap.accent,
+  lend: protocols.morpho.accent,
+  loop: "#8fb2ff",
+  back: "#a9b3cf",
+};
+const chainColors: Record<string, string> = {
+  base: "#0052ff",
+  ethereum: "#627eea",
+  polygon: "#8247e5",
+  arbitrum: "#28a0f0",
+  optimism: "#ff0420",
+  avalanche: "#e84142",
+  unichain: "#f50db4",
+  arc: protocols.arc.accent,
+};
+const OTHER = "#c9c6cf";
+/// Short names, so a legend row fits beside a small donut.
+const purposeNames: Record<string, string> = {
+  pay: "Pay",
+  hold: "Hold",
+  pool: "Uniswap pool",
+  lend: "Lend",
+  loop: "Loop",
+  back: "Bridge back",
+};
 
 type Category = Slice & { color: string; label: string };
 
-/// Assigns colours by `order`, folding anything past the palette into one grey "Other".
-function categories(slices: Slice[], order: string[], label: (key: string) => string): Category[] {
-  const rank = (key: string) => {
-    const at = order.indexOf(key);
-    return at === -1 ? order.length : at;
-  };
-  const sorted = [...slices].sort((a, b) => rank(a.key) - rank(b.key));
-  const kept = sorted.filter((slice) => rank(slice.key) < PALETTE.length);
-  const rest = sorted.filter((slice) => rank(slice.key) >= PALETTE.length);
-  const result: Category[] = kept.map((slice) => ({ ...slice, color: PALETTE[rank(slice.key)], label: label(slice.key) }));
-  if (rest.length) {
-    result.push({
-      key: OTHER_KEY,
-      label: "Other",
-      color: OTHER,
-      volume: rest.reduce((sum, slice) => sum + slice.volume, 0),
-      count: rest.reduce((sum, slice) => sum + slice.count, 0),
-    });
-  }
-  return result;
+function categories(slices: Slice[], label: (key: string) => string, color: (key: string) => string): Category[] {
+  return slices.map((slice) => ({ ...slice, label: label(slice.key), color: color(slice.key) }));
 }
 
-const formatOf = (measure: "volume" | "count") => (value: number) =>
-  measure === "volume" ? usd(value) : value.toLocaleString("en-US");
+const formatOf = (measure: Measure) => (value: number) => (measure === "volume" ? usd(value) : value.toLocaleString("en-US"));
 
 /// SVG path of a donut slice between two angles, measured clockwise from the top.
 function arc(start: number, end: number, outer: number, inner: number) {
@@ -73,125 +69,81 @@ function arc(start: number, end: number, outer: number, inner: number) {
   ].join(" ");
 }
 
-/// One measure as a donut: the total in the middle, each category's exact value and share on hover.
-function Donut({
-  title,
-  items,
-  measure,
-  active,
-  onActive,
-}: {
-  title: string;
-  items: Category[];
-  measure: "volume" | "count";
-  active?: string;
-  onActive: (key?: string) => void;
-}) {
+/// One dimension as a card: a small donut of the chosen measure, and a legend naming every colour with
+/// its value and share. Hovering either highlights the category in both.
+function Breakdown({ title, items, measure }: { title: string; items: Category[]; measure: Measure }) {
+  const [active, setActive] = useState<string>();
   const format = formatOf(measure);
-  const total = items.reduce((sum, item) => sum + item[measure], 0);
-  const shown = items.filter((item) => item[measure] > 0);
+  const rows = [...items].sort((a, b) => b[measure] - a[measure]);
+  const total = rows.reduce((sum, item) => sum + item[measure], 0);
+  const shown = rows.filter((item) => item[measure] > 0);
   const focus = shown.find((item) => item.key === active);
   let angle = 0;
   return (
-    <figure className={styles.donut}>
-      <figcaption className={styles.caption}>{title}</figcaption>
-      <svg viewBox="-60 -60 120 120" className={styles.ring} role="img" aria-label={`${title}: ${format(total)}`}>
-        {shown.length === 1 ? (
-          <circle r="42" fill="none" stroke={shown[0].color} strokeWidth="20" onMouseEnter={() => onActive(shown[0].key)} onMouseLeave={() => onActive()}>
-            <title>{`${shown[0].label}: ${format(shown[0][measure])}, 100%`}</title>
-          </circle>
-        ) : (
-          shown.map((item) => {
-            const sweep = (item[measure] / total) * Math.PI * 2;
-            const path = arc(angle, angle + sweep, active === item.key ? 55 : 52, 32);
-            angle += sweep;
-            return (
-              <path
-                key={item.key}
-                d={path}
-                fill={item.color}
-                className={styles.slice}
-                data-dim={active !== undefined && active !== item.key ? "" : undefined}
-                onMouseEnter={() => onActive(item.key)}
-                onMouseLeave={() => onActive()}
-              >
-                <title>{`${item.label}: ${format(item[measure])}, ${((item[measure] / total) * 100).toFixed(1)}%`}</title>
-              </path>
-            );
-          })
-        )}
-        <text className={styles.centerValue} y="2" textAnchor="middle">
-          {format(focus ? focus[measure] : total)}
-        </text>
-        <text className={styles.centerLabel} y="15" textAnchor="middle">
-          {focus ? `${((focus[measure] / total) * 100).toFixed(0)}% ${focus.label}` : "total"}
-        </text>
-      </svg>
-    </figure>
-  );
-}
-
-/// Volume and number of moves for one dimension: two donuts, never two scales on one chart, and one
-/// legend that names every colour with its exact numbers.
-function Breakdown({
-  title,
-  slices,
-  order,
-  label,
-}: {
-  title: string;
-  slices: Slice[];
-  order: string[];
-  label: (key: string) => string;
-}) {
-  const [active, setActive] = useState<string>();
-  const items = categories(slices, order, label);
-  const totals = { volume: items.reduce((s, i) => s + i.volume, 0), count: items.reduce((s, i) => s + i.count, 0) };
-  const share = (value: number, total: number) => (total > 0 ? `${((value / total) * 100).toFixed(0)}%` : "");
-  return (
-    <section className={styles.section}>
-      <h2 className={styles.heading}>{title}</h2>
-      {items.length === 0 ? (
+    <section className={styles.card}>
+      <h2 className={styles.cardTitle}>{title}</h2>
+      {shown.length === 0 ? (
         <p className={styles.muted}>Nothing yet.</p>
       ) : (
-        <div className={styles.breakdown}>
-          <Donut title="By volume" items={items} measure="volume" active={active} onActive={setActive} />
-          <Donut title="By number of moves" items={items} measure="count" active={active} onActive={setActive} />
-          <table className={styles.legend}>
-            <thead>
-              <tr>
-                <th />
-                <th className={styles.number}>Volume</th>
-                <th className={styles.number}>Moves</th>
-              </tr>
-            </thead>
-            <tbody>
-              {items.map((item) => (
-                <tr
-                  key={item.key}
-                  data-active={active === item.key ? "" : undefined}
-                  onMouseEnter={() => setActive(item.key)}
-                  onMouseLeave={() => setActive(undefined)}
-                >
-                  <td>
-                    <span className={styles.swatch} style={{ background: item.color }} />
-                    {item.label}
-                  </td>
-                  <td className={styles.number}>
-                    {usd(item.volume)} <span className={styles.share}>{share(item.volume, totals.volume)}</span>
-                  </td>
-                  <td className={styles.number}>
-                    {item.count} <span className={styles.share}>{share(item.count, totals.count)}</span>
-                  </td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
+        <div className={styles.cardBody}>
+          <svg viewBox="-60 -60 120 120" className={styles.ring} role="img" aria-label={`${title}: ${format(total)}`}>
+            {shown.length === 1 ? (
+              <circle r="44" fill="none" stroke={shown[0].color} strokeWidth="16">
+                <title>{`${shown[0].label}: ${format(shown[0][measure])}, 100%`}</title>
+              </circle>
+            ) : (
+              shown.map((item) => {
+                const sweep = (item[measure] / total) * Math.PI * 2;
+                const path = arc(angle, angle + sweep, active === item.key ? 55 : 52, 36);
+                angle += sweep;
+                return (
+                  <path
+                    key={item.key}
+                    d={path}
+                    fill={item.color}
+                    className={styles.slice}
+                    data-dim={active !== undefined && active !== item.key ? "" : undefined}
+                    onMouseEnter={() => setActive(item.key)}
+                    onMouseLeave={() => setActive(undefined)}
+                  >
+                    <title>{`${item.label}: ${format(item[measure])}, ${((item[measure] / total) * 100).toFixed(1)}%`}</title>
+                  </path>
+                );
+              })
+            )}
+            <text className={styles.centerValue} y="3" textAnchor="middle">
+              {format(focus ? focus[measure] : total)}
+            </text>
+            <text className={styles.centerLabel} y="16" textAnchor="middle">
+              {focus ? `${((focus[measure] / total) * 100).toFixed(0)}%` : "total"}
+            </text>
+          </svg>
+          <ul className={styles.legend}>
+            {rows.map((item) => (
+              <li
+                key={item.key}
+                title={`${item.label}: ${format(item[measure])}, ${total > 0 ? ((item[measure] / total) * 100).toFixed(1) : 0}%`}
+                data-active={active === item.key ? "" : undefined}
+                onMouseEnter={() => setActive(item.key)}
+                onMouseLeave={() => setActive(undefined)}
+              >
+                <span className={styles.swatch} style={{ background: item.color }} />
+                <span className={styles.legendLabel}>{item.label}</span>
+                <span className={styles.legendValue}>{format(item[measure])}</span>
+              </li>
+            ))}
+          </ul>
         </div>
       )}
     </section>
   );
 }
+
+const chainLabel = (key: string) => (key === "arc" ? "Arc" : (sources[key as SourceId]?.label ?? key));
+const when = (at: number) =>
+  new Date(at).toLocaleString("en-GB", { day: "numeric", month: "short", hour: "2-digit", minute: "2-digit" });
+const short = (address: string) => `${address.slice(0, 6)}…${address.slice(-4)}`;
+const amount = (value: number) => value.toLocaleString("en-US", { maximumFractionDigits: 6 });
 
 function Recent({ intents }: { intents: Intent[] }) {
   const [page, setPage] = useState(0);
@@ -262,6 +214,7 @@ function Recent({ intents }: { intents: Intent[] }) {
 /// Every move made with the app, by any wallet. Each one was checked against its transaction on chain
 /// before it was counted.
 export default function StatsPage() {
+  const [measure, setMeasure] = useState<Measure>("volume");
   const stats = useQuery({
     queryKey: ["stats"],
     refetchInterval: 30_000,
@@ -271,34 +224,57 @@ export default function StatsPage() {
 
   return (
     <main className={styles.page}>
-      <h1 className={styles.title}>Stats</h1>
-      <p className={styles.muted}>Every move made with andthen, by any wallet, counted once its transaction is found on chain.</p>
-
-      <div className={styles.tiles}>
-        <div className={styles.tile}>
-          <span className={styles.tileValue}>{data ? usd(data.totals.volume) : "…"}</span>
-          <span className={styles.tileLabel}>Volume moved</span>
+      <div className={styles.top}>
+        <div>
+          <h1 className={styles.title}>Stats</h1>
+          <p className={styles.muted}>Every move made with andthen, counted once its transaction is found on chain.</p>
         </div>
-        <div className={styles.tile}>
-          <span className={styles.tileValue}>{data ? data.totals.count.toLocaleString("en-US") : "…"}</span>
-          <span className={styles.tileLabel}>Moves</span>
-        </div>
-        <div className={styles.tile}>
-          <span className={styles.tileValue}>{data ? data.totals.wallets.toLocaleString("en-US") : "…"}</span>
-          <span className={styles.tileLabel}>Wallets</span>
-        </div>
+        <dl className={styles.totals}>
+          <div>
+            <dt>Volume</dt>
+            <dd>{data ? usd(data.totals.volume) : "…"}</dd>
+          </div>
+          <div>
+            <dt>Moves</dt>
+            <dd>{data ? data.totals.count.toLocaleString("en-US") : "…"}</dd>
+          </div>
+          <div>
+            <dt>Wallets</dt>
+            <dd>{data ? data.totals.wallets.toLocaleString("en-US") : "…"}</dd>
+          </div>
+        </dl>
       </div>
 
       {data && (
         <>
-          <Breakdown
-            title="Use cases"
-            slices={data.byPurpose}
-            order={purposeOrder}
-            label={(key) => purposeTitle(key as Intent["purpose"])}
-          />
-          <Breakdown title="Source chains" slices={data.byChain} order={chainOrder} label={chainLabel} />
-          <Breakdown title="Source tokens" slices={data.byToken} order={tokenOrder} label={(key) => key} />
+          <div className={styles.controls}>
+            <Segmented
+              label="Measure"
+              value={measure}
+              options={[
+                { value: "volume", label: "By volume" },
+                { value: "count", label: "By number of moves" },
+              ]}
+              onChange={(value) => setMeasure(value as Measure)}
+            />
+          </div>
+          <div className={styles.cards}>
+            <Breakdown
+              title="Use cases"
+              measure={measure}
+              items={categories(data.byPurpose, (key) => purposeNames[key] ?? key, (key) => purposeColors[key] ?? OTHER)}
+            />
+            <Breakdown
+              title="Source chains"
+              measure={measure}
+              items={categories(data.byChain, chainLabel, (key) => chainColors[key] ?? OTHER)}
+            />
+            <Breakdown
+              title="Source tokens"
+              measure={measure}
+              items={categories(data.byToken, (key) => key, (key) => tokenColor(key).accent)}
+            />
+          </div>
           <Recent intents={data.recent} />
         </>
       )}
