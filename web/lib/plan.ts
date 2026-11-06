@@ -148,7 +148,7 @@ export const nextSteps: NextStep[] = [
     id: "pool",
     title: "Uniswap pool on Arc",
     body: `Provide liquidity to ${pools.map((pool) => pool.id).join(", ")} in the range you pick. The position NFT is yours.`,
-    verb: "add it to the",
+    verb: "add liquidity to the",
   },
   {
     id: "lend",
