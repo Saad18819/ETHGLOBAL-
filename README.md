@@ -71,6 +71,8 @@ Deploy, with `PRIVATE_KEY` and `DEPLOYER` in `.env`:
 
 ```bash
 source .env
+# dry run, sends nothing: the live CCIP router quotes a fee to Arc for the router's extra args
+SOURCE=base forge script script/Deploy.s.sol:QuoteLane --rpc-url base_sepolia
 forge script script/Deploy.s.sol:DeployArc --rpc-url arc_testnet --broadcast --private-key $PRIVATE_KEY
 # once per source chain: SOURCE is base, sepolia or amoy, with the matching --rpc-url
 SOURCE=base SETTLEMENT=0x... forge script script/Deploy.s.sol:DeploySource --rpc-url base_sepolia --broadcast --private-key $PRIVATE_KEY

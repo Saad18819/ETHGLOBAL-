@@ -15,6 +15,7 @@ import {AndThenSettlement} from "../src/AndThenSettlement.sol";
 import {AndThenRouter} from "../src/AndThenRouter.sol";
 import {InvoiceBook} from "../src/InvoiceBook.sol";
 import {IMessageTransmitterV2, ITokenMessengerV2} from "../src/interfaces/ICCTP.sol";
+import {Action, Intent} from "../src/libraries/Intent.sol";
 
 /// Addresses from docs.arc.io/arc/references/contract-addresses, developers.circle.com/cctp/references/contract-addresses,
 /// docs.chain.link/ccip/directory/testnet and docs.uniswap.org/contracts/v4/deployments.
@@ -129,6 +130,35 @@ contract DeploySource is Script {
         vm.stopBroadcast();
         console.log("router", address(router));
         console.log("invoices", address(invoices));
+    }
+}
+
+/// Pre-flight check, sends nothing: deploys a router in simulation and asks the live CCIP router for the
+/// fee to Arc with the router's extra args.
+/// SOURCE=base forge script script/Deploy.s.sol:QuoteLane --rpc-url base_sepolia
+contract QuoteLane is Script {
+    address constant OWNER = address(0x0E1);
+
+    function run() external {
+        Testnet.Source memory src = Testnet.source(vm.envString("SOURCE"));
+        AndThenRouter router = new AndThenRouter(
+            IERC20(src.usdc),
+            ITokenMessengerV2(Testnet.TOKEN_MESSENGER),
+            IRouterClient(src.ccipRouter),
+            IPoolManager(src.poolManager),
+            Testnet.ARC_SELECTOR,
+            address(0xA11CE),
+            OWNER
+        );
+        vm.prank(OWNER);
+        router.setConfig(1_200_000, bytes4(uint32(5)));
+        Intent memory intent;
+        intent.payer = OWNER;
+        intent.action = Action.Pay;
+        intent.recipient = address(0xB0B);
+        intent.token = Testnet.ARC_USDC;
+        intent.amount = 1e6;
+        console.log("CCIP fee to Arc in native wei", router.quote(intent));
     }
 }
 
