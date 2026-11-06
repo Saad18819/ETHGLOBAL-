@@ -61,6 +61,11 @@
   color: var(--green-ink);
 }
 
+.failure {
+  font-size: 14px;
+  color: var(--red-ink);
+}
+
 .status {
   font-size: 14px;
   color: var(--muted);
