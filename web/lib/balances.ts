@@ -7,6 +7,7 @@ import { config, type ChainId } from "./config";
 import { erc20Abi } from "./contracts";
 import type { Markets } from "./markets";
 import { assets, type AssetId } from "./plan";
+import { tokens } from "./tokens";
 
 export type Holding = { asset: AssetId; from: SourceId; amount: string; usd: number };
 
@@ -18,7 +19,7 @@ export function useBalances(account: Address | undefined, prices: Markets["price
     refetchInterval: 30_000,
     queryFn: async (): Promise<Holding[]> => {
       const entries = sourceIds.flatMap((from) =>
-        Object.entries(sources[from].tokens).map(([asset, token]) => ({ from, asset: asset as AssetId, token })),
+        tokens.flatMap((t) => (t.sources[from] ? [{ from, asset: t.symbol as AssetId, token: t.sources[from] }] : [])),
       );
 
       const erc20 = entries.filter((entry) => entry.token !== "native");
@@ -69,4 +70,13 @@ export function short(amount: string) {
   if (value === 0) return "0";
   if (value >= 1000) return value.toLocaleString("en-US", { maximumFractionDigits: 0 });
   return Number(value.toPrecision(4)).toString();
+}
+
+/// A round amount up to `share` of a balance, leaving some of a gas token for fees.
+export function spendable(asset: AssetId, from: SourceId, amount: string, share = 1) {
+  const token = assets[asset]?.token;
+  const gas = token?.sources[from] === "native" ? 0.9 : 1;
+  const digits = Math.min(token?.decimals ?? 6, token?.kind === "btc" ? 6 : token?.kind === "eth" ? 4 : 2);
+  const factor = 10 ** digits;
+  return String(Math.floor(Number(amount) * share * gas * factor) / factor);
 }

@@ -1,18 +1,24 @@
 import type { Address, Chain } from "viem";
 import {
+  arbitrum,
   arbitrumSepolia,
+  avalanche,
   avalancheFuji,
+  base,
   baseSepolia,
+  mainnet,
+  optimism,
   optimismSepolia,
+  polygon,
   polygonAmoy,
   sepolia,
+  unichain,
   unichainSepolia,
 } from "viem/chains";
 
-export type SourceId = "base" | "ethereum" | "polygon" | "arbitrum" | "optimism" | "avalanche" | "unichain";
+import { isTestnet } from "./network";
 
-/// Token addresses on a source chain; "native" is the gas token. From developers.circle.com/stablecoins.
-export type Tokens = Partial<Record<"USDC" | "EURC" | "ETH" | "WETH" | "cirBTC", Address | "native">>;
+export type SourceId = "base" | "ethereum" | "polygon" | "arbitrum" | "optimism" | "avalanche" | "unichain";
 
 export type Source = {
   label: string;
@@ -20,26 +26,74 @@ export type Source = {
   /// Chain identifier in Circle App Kit.
   kitChain: string;
   cctpDomain: number;
-  tokens: Tokens;
-  /// Chains with a CCIP lane to Arc run the whole flow through our router and settlement contract.
-  router?: { address?: Address; usdc: Address; nativeSymbol: string; explorer: string };
+  explorer: string;
+  /// Chains with a CCIP lane to Arc can run the whole flow through our router and settlement contract,
+  /// once the router is deployed there.
+  router?: { address?: Address; usdc: Address; nativeSymbol: string };
 };
 
-export const sources: Record<SourceId, Source> = {
+/// Mainnet source chains. USDC addresses from developers.circle.com/stablecoins/usdc-contract-addresses.
+const mainnetSources: Record<SourceId, Source> = {
+  base: {
+    label: "Base",
+    chain: base,
+    kitChain: "Base",
+    cctpDomain: 6,
+    explorer: "https://basescan.org",
+    router: {
+      address: process.env.NEXT_PUBLIC_ROUTER_BASE as Address | undefined,
+      usdc: "0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913",
+      nativeSymbol: "ETH",
+    },
+  },
+  ethereum: {
+    label: "Ethereum",
+    chain: mainnet,
+    kitChain: "Ethereum",
+    cctpDomain: 0,
+    explorer: "https://etherscan.io",
+    router: {
+      address: process.env.NEXT_PUBLIC_ROUTER_ETHEREUM as Address | undefined,
+      usdc: "0xA0b86991c6218b36c1d19D4a2e9Eb0cE3606eB48",
+      nativeSymbol: "ETH",
+    },
+  },
+  polygon: {
+    label: "Polygon",
+    chain: polygon,
+    kitChain: "Polygon",
+    cctpDomain: 7,
+    explorer: "https://polygonscan.com",
+    router: {
+      address: process.env.NEXT_PUBLIC_ROUTER_POLYGON as Address | undefined,
+      usdc: "0x3c499c542cEF5E3811e1192ce70d8cC03d5c3359",
+      nativeSymbol: "POL",
+    },
+  },
+  arbitrum: { label: "Arbitrum", chain: arbitrum, kitChain: "Arbitrum", cctpDomain: 3, explorer: "https://arbiscan.io" },
+  optimism: {
+    label: "Optimism",
+    chain: optimism,
+    kitChain: "Optimism",
+    cctpDomain: 2,
+    explorer: "https://optimistic.etherscan.io",
+  },
+  avalanche: { label: "Avalanche", chain: avalanche, kitChain: "Avalanche", cctpDomain: 1, explorer: "https://snowtrace.io" },
+  unichain: { label: "Unichain", chain: unichain, kitChain: "Unichain", cctpDomain: 10, explorer: "https://uniscan.xyz" },
+};
+
+/// The same chains' testnets, with the same Circle domains.
+const testnetSources: Record<SourceId, Source> = {
   base: {
     label: "Base",
     chain: baseSepolia,
     kitChain: "Base_Sepolia",
     cctpDomain: 6,
-    tokens: {
-      USDC: "0x036CbD53842c5426634e7929541eC2318f3dCF7e",
-      EURC: "0x808456652fdb597867f38412077A9182bf77359F",
-    },
+    explorer: "https://sepolia.basescan.org",
     router: {
-      address: (process.env.NEXT_PUBLIC_ROUTER_BASE ?? process.env.NEXT_PUBLIC_ROUTER) as Address | undefined,
+      address: process.env.NEXT_PUBLIC_ROUTER_BASE as Address | undefined,
       usdc: "0x036CbD53842c5426634e7929541eC2318f3dCF7e",
       nativeSymbol: "ETH",
-      explorer: "https://sepolia.basescan.org",
     },
   },
   ethereum: {
@@ -47,18 +101,11 @@ export const sources: Record<SourceId, Source> = {
     chain: sepolia,
     kitChain: "Ethereum_Sepolia",
     cctpDomain: 0,
-    tokens: {
-      USDC: "0x1c7D4B196Cb0C7B01d743Fbc6116a902379C7238",
-      EURC: "0x08210F9170F89Ab7658F0B5E3fF39b0E03C594D4",
-      ETH: "native",
-      WETH: "0xfFf9976782d46CC05630D1f6eBAB18b2324d6B14",
-      cirBTC: "0x3a3fe695f684bf9b9e43cf43c2b895ea5e392bb3",
-    },
+    explorer: "https://sepolia.etherscan.io",
     router: {
       address: process.env.NEXT_PUBLIC_ROUTER_ETHEREUM as Address | undefined,
       usdc: "0x1c7D4B196Cb0C7B01d743Fbc6116a902379C7238",
       nativeSymbol: "ETH",
-      explorer: "https://sepolia.etherscan.io",
     },
   },
   polygon: {
@@ -66,12 +113,11 @@ export const sources: Record<SourceId, Source> = {
     chain: polygonAmoy,
     kitChain: "Polygon_Amoy_Testnet",
     cctpDomain: 7,
-    tokens: { USDC: "0x41E94Eb019C0762f9Bfcf9Fb1E58725BfB0e7582" },
+    explorer: "https://amoy.polygonscan.com",
     router: {
       address: process.env.NEXT_PUBLIC_ROUTER_POLYGON as Address | undefined,
       usdc: "0x41E94Eb019C0762f9Bfcf9Fb1E58725BfB0e7582",
       nativeSymbol: "POL",
-      explorer: "https://amoy.polygonscan.com",
     },
   },
   arbitrum: {
@@ -79,33 +125,32 @@ export const sources: Record<SourceId, Source> = {
     chain: arbitrumSepolia,
     kitChain: "Arbitrum_Sepolia",
     cctpDomain: 3,
-    tokens: { USDC: "0x75faf114eafb1BDbe2F0316DF893fd58CE46AA4d" },
+    explorer: "https://sepolia.arbiscan.io",
   },
   optimism: {
     label: "Optimism",
     chain: optimismSepolia,
     kitChain: "Optimism_Sepolia",
     cctpDomain: 2,
-    tokens: { USDC: "0x5fd84259d66Cd46123540766Be93DFE6D43130D7" },
+    explorer: "https://sepolia-optimism.etherscan.io",
   },
   avalanche: {
     label: "Avalanche",
     chain: avalancheFuji,
     kitChain: "Avalanche_Fuji",
     cctpDomain: 1,
-    tokens: {
-      USDC: "0x5425890298aed601595a70AB815c96711a31Bc65",
-      EURC: "0x5E44db7996c682E92a960b65AC713a54AD815c6B",
-    },
+    explorer: "https://testnet.snowtrace.io",
   },
   unichain: {
     label: "Unichain",
     chain: unichainSepolia,
     kitChain: "Unichain_Sepolia",
     cctpDomain: 10,
-    tokens: { USDC: "0x31d0220469e10c4E71834a79b1f276d740d3768F" },
+    explorer: "https://sepolia.uniscan.xyz",
   },
 };
+
+export const sources = isTestnet ? testnetSources : mainnetSources;
 
 export const sourceIds = Object.keys(sources) as SourceId[];
 

@@ -1,13 +1,12 @@
 import { createPublicClient, createWalletClient, http, isHex, parseGwei, type Hex } from "viem";
 import { privateKeyToAccount } from "viem/accounts";
-import { arcTestnet } from "viem/chains";
 
-import { ARC_RPC } from "@/lib/config";
+import { ARC_RPC, arcChain } from "@/lib/config";
 import { deployed, settlementAbi } from "@/lib/contracts";
+import { IRIS } from "@/lib/network";
 
-const IRIS = "https://iris-api-sandbox.circle.com";
 
-const publicClient = createPublicClient({ chain: arcTestnet, transport: http(ARC_RPC) });
+const publicClient = createPublicClient({ chain: arcChain, transport: http(ARC_RPC) });
 const inFlight = new Map<Hex, Promise<Response>>();
 
 /// Finishes the CCTP leg: waits for Circle's attestation of the burn on the source chain, then mints on Arc
@@ -57,7 +56,7 @@ async function relay(txHash: Hex, key: Hex, domain: number): Promise<Response> {
   if (!ready) return Response.json({ state: "waiting" });
 
   const account = privateKeyToAccount(process.env.RELAYER_PRIVATE_KEY as Hex);
-  const wallet = createWalletClient({ account, chain: arcTestnet, transport: http(ARC_RPC) });
+  const wallet = createWalletClient({ account, chain: arcChain, transport: http(ARC_RPC) });
   // Arc's mempool rejects a maxFeePerGas under 20 gwei.
   const hash = await wallet.writeContract({
     address: settlement,

@@ -1,165 +1,173 @@
-import { encodeAbiParameters, encodePacked, parseAbi, zeroAddress, type Address, type Hex } from "viem";
-import { readContract, waitForTransactionReceipt, writeContract } from "wagmi/actions";
-import { sepolia } from "wagmi/chains";
+import { isAddress, isHex, zeroAddress, type Address, type Hex } from "viem";
+import { readContract, sendTransaction, signTypedData, switchChain, waitForTransactionReceipt } from "wagmi/actions";
 
-import { config } from "./config";
+import { sources, type SourceId } from "./chains";
+import { config, type ChainId } from "./config";
+import { erc20Abi } from "./contracts";
+import { isTestnet } from "./network";
+import { tokenBySymbol } from "./tokens";
+import { quoteEthToUsdc, swapEthToUsdc } from "./uniswapTestnet";
 
-/// Uniswap v4 on Ethereum Sepolia: docs.uniswap.org/contracts/v4/deployments
-const SEPOLIA = {
-  chainId: sepolia.id,
-  quoter: "0x68aFa8b853cAa7a2D40B0F6AEE5C4DbC147C8244",
-  universalRouter: "0x7E4f6c5e954Da5c61B3423D81E2277431Ac043f3",
-  usdc: "0x1c7D4B196Cb0C7B01d743Fbc6116a902379C7238",
-  weth: "0xfFf9976782d46CC05630D1f6eBAB18b2324d6B14",
-} as const;
+/// Swaps on the source chain go through the Uniswap Trading API (via /api/uniswap), routed CLASSIC so the
+/// output lands in the wallet in the same transaction and can be bridged right after. On testnet they go
+/// straight to the v4 contracts on Sepolia instead.
 
-/// Native ETH/USDC pools without hooks, one per fee tier. ETH is currency0.
-const TIERS = [
-  { fee: 100, tickSpacing: 1 },
-  { fee: 500, tickSpacing: 10 },
-  { fee: 3000, tickSpacing: 60 },
-  { fee: 10000, tickSpacing: 200 },
-] as const;
+/// Quotes only need a plausible swapper before a wallet is connected.
+const QUOTE_SWAPPER = "0x000000000000000000000000000000000000dEaD";
 
-const keyType = {
-  type: "tuple",
-  components: [
-    { name: "currency0", type: "address" },
-    { name: "currency1", type: "address" },
-    { name: "fee", type: "uint24" },
-    { name: "tickSpacing", type: "int24" },
-    { name: "hooks", type: "address" },
-  ],
-} as const;
-
-const quoterAbi = parseAbi([
-  // Not a view in Solidity, but safe to eth_call: the quote is computed and returned without a wallet.
-  "function quoteExactInputSingle(((address currency0, address currency1, uint24 fee, int24 tickSpacing, address hooks) poolKey, bool zeroForOne, uint128 exactAmount, bytes hookData) params) view returns (uint256 amountOut, uint256 gasEstimate)",
-]);
-const routerAbi = parseAbi(["function execute(bytes commands, bytes[] inputs, uint256 deadline) payable"]);
-const wethAbi = parseAbi(["function withdraw(uint256 amount)"]);
-
-export type EthQuote = {
-  amountOut: bigint;
-  fee: number;
-  tickSpacing: number;
-  /// ETH price this pool implies, in USD, and how far it is from the market. Testnet pools drift a lot.
-  impliedPrice: number;
-  deviation?: number;
+type Classic = {
+  routing: "CLASSIC" | "WRAP" | "UNWRAP";
+  quote: {
+    input: { token: Address; amount: string };
+    output: { token: Address; amount: string };
+    gasFeeUSD?: string;
+    priceImpact?: number;
+    route?: { type: string; fee?: string }[][];
+  };
+  permitData?: { domain: Record<string, unknown>; types: Record<string, unknown>; values: Record<string, unknown> } | null;
+  permitTransaction?: unknown;
 };
 
-const poolKey = (tier: { fee: number; tickSpacing: number }) => ({
-  currency0: zeroAddress,
-  currency1: SEPOLIA.usdc,
-  fee: tier.fee,
-  tickSpacing: tier.tickSpacing,
-  hooks: zeroAddress,
-});
+export type SourceQuote = {
+  amountIn: bigint;
+  amountOut: bigint;
+  gasUsd?: number;
+  priceImpact?: number;
+  pools: string;
+  /// How far a testnet pool's price is from the market (testnet pools drift a lot).
+  deviation?: number;
+  raw?: Classic;
+};
 
-/// Best USDC out for `amountIn` wei across the ETH/USDC fee tiers. `ethUsd` is the market price,
-/// used to report how far the pool is from it.
-export async function quoteEthToUsdc(amountIn: bigint, ethUsd?: number): Promise<EthQuote | undefined> {
-  if (amountIn === 0n) return undefined;
-  const quotes = await Promise.all(
-    TIERS.map(async (tier): Promise<EthQuote | undefined> => {
-      try {
-        const result = await readContract(config, {
-          chainId: SEPOLIA.chainId,
-          address: SEPOLIA.quoter,
-          abi: quoterAbi,
-          functionName: "quoteExactInputSingle",
-          args: [{ poolKey: poolKey(tier), zeroForOne: true, exactAmount: amountIn, hookData: "0x" }],
-        });
-        const impliedPrice = Number(result[0]) / 1e6 / (Number(amountIn) / 1e18);
-        return {
-          amountOut: result[0],
-          fee: tier.fee,
-          tickSpacing: tier.tickSpacing,
-          impliedPrice,
-          deviation: ethUsd ? impliedPrice / ethUsd - 1 : undefined,
-        };
-      } catch {
-        return undefined;
-      }
-    }),
-  );
-  return quotes
-    .filter((quote): quote is EthQuote => quote !== undefined)
-    .sort((a, b) => (b.amountOut > a.amountOut ? 1 : -1))[0];
+async function call<T>(action: "check_approval" | "quote" | "swap", body: unknown): Promise<T> {
+  const response = await fetch(`/api/uniswap/${action}`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(body),
+  });
+  const data = await response.json();
+  if (!response.ok) throw new Error(data.detail ?? data.errorCode ?? `Uniswap ${action} failed`);
+  return data as T;
 }
 
-/// Swaps ETH (unwrapping WETH first if needed) into USDC on Sepolia through the UniversalRouter.
-/// Returns the USDC received.
-export async function swapEthToUsdc(
-  { account, amountIn, quote, slippage, fromWeth }: {
-    account: Address;
-    amountIn: bigint;
-    quote: EthQuote;
-    slippage: number;
-    fromWeth: boolean;
-  },
-  onStep: (label: string) => void,
+const tokenAddress = (asset: string, from: SourceId): Address => {
+  const address = tokenBySymbol[asset]?.sources[from];
+  if (!address) throw new Error(`${asset} is not on ${sources[from].label}`);
+  return address === "native" ? zeroAddress : address;
+};
+
+const usdcOn = (from: SourceId) => tokenAddress("USDC", from);
+
+/// The best CLASSIC route from the asset into USDC on its own chain.
+export async function quoteToUsdc(
+  asset: string,
+  from: SourceId,
+  amountIn: bigint,
+  slippage: number,
+  swapper?: Address,
+  marketPrice?: number,
+): Promise<SourceQuote> {
+  if (isTestnet) {
+    const quote = await quoteEthToUsdc(from, amountIn, marketPrice);
+    if (!quote) throw new Error("no pool has a quote right now");
+    return { amountIn, amountOut: quote.amountOut, pools: "v4", deviation: quote.deviation };
+  }
+  const raw = await call<Classic>("quote", {
+    swapper: swapper ?? QUOTE_SWAPPER,
+    tokenIn: tokenAddress(asset, from),
+    tokenOut: usdcOn(from),
+    tokenInChainId: String(sources[from].chain.id),
+    tokenOutChainId: String(sources[from].chain.id),
+    amount: amountIn.toString(),
+    type: "EXACT_INPUT",
+    slippageTolerance: slippage,
+    routingPreference: "CLASSIC",
+  });
+  const versions = new Set((raw.quote.route ?? []).flat().map((pool) => pool.type.replace("-pool", "")));
+  return {
+    amountIn,
+    amountOut: BigInt(raw.quote.output.amount),
+    gasUsd: raw.quote.gasFeeUSD ? Number(raw.quote.gasFeeUSD) : undefined,
+    priceImpact: raw.quote.priceImpact,
+    pools: [...versions].join(" and "),
+    raw,
+  };
+}
+
+/// Approves if needed, quotes again with the real swapper, signs the Permit2 data when asked and sends the
+/// swap. Returns the USDC that reached the wallet.
+export async function swapToUsdc(
+  params: { account: Address; asset: string; from: SourceId; amountIn: bigint; slippage: number },
+  onStatus: (status: string) => void,
 ): Promise<{ usdc: bigint; hash: Hex }> {
-  if (fromWeth) {
-    onStep("Unwrapping WETH");
-    const hash = await writeContract(config, {
-      chainId: SEPOLIA.chainId,
-      address: SEPOLIA.weth,
-      abi: wethAbi,
-      functionName: "withdraw",
-      args: [amountIn],
-    });
-    await waitForTransactionReceipt(config, { chainId: SEPOLIA.chainId, hash });
+  const { account, asset, from, amountIn, slippage } = params;
+  const chainId = sources[from].chain.id as ChainId;
+  await switchChain(config, { chainId });
+
+  if (isTestnet) {
+    const quote = await quoteEthToUsdc(from, amountIn);
+    if (!quote) throw new Error("No Uniswap pool has a quote right now");
+    return swapEthToUsdc({ from, account, amountIn, quote, slippage: slippage / 100, fromWeth: asset === "WETH" }, onStatus);
   }
 
-  const minOut = (quote.amountOut * BigInt(Math.floor((1 - slippage) * 10_000))) / 10_000n;
-  const key = poolKey(quote);
+  const tokenIn = tokenAddress(asset, from);
+  if (tokenIn !== zeroAddress) {
+    const { approval } = await call<{ approval: { to: Address; data: Hex; value?: string } | null }>("check_approval", {
+      walletAddress: account,
+      token: tokenIn,
+      amount: amountIn.toString(),
+      chainId,
+    });
+    if (approval) {
+      onStatus(`Approving ${asset} for Permit2`);
+      const hash = await sendTransaction(config, {
+        chainId,
+        to: approval.to,
+        data: approval.data,
+        value: BigInt(approval.value ?? "0"),
+      });
+      await waitForTransactionReceipt(config, { chainId, hash });
+    }
+  }
 
-  // V4_SWAP with SWAP_EXACT_IN_SINGLE, SETTLE_ALL and TAKE_ALL (v4-periphery Actions). minHopPriceX36 is 0;
-  // TAKE_ALL enforces the minimum out.
-  const swap = encodeAbiParameters(
-    [
-      {
-        type: "tuple",
-        components: [
-          { name: "poolKey", ...keyType },
-          { name: "zeroForOne", type: "bool" },
-          { name: "amountIn", type: "uint128" },
-          { name: "amountOutMinimum", type: "uint128" },
-          { name: "minHopPriceX36", type: "uint256" },
-          { name: "hookData", type: "bytes" },
-        ],
-      },
-    ],
-    [{ poolKey: key, zeroForOne: true, amountIn, amountOutMinimum: minOut, minHopPriceX36: 0n, hookData: "0x" }],
-  );
-  const settle = encodeAbiParameters([{ type: "address" }, { type: "uint256" }], [zeroAddress, amountIn]);
-  const take = encodeAbiParameters([{ type: "address" }, { type: "uint256" }], [SEPOLIA.usdc, minOut]);
-  const actions = encodePacked(["uint8", "uint8", "uint8"], [0x06, 0x0c, 0x0f]);
-  const v4Swap = encodeAbiParameters([{ type: "bytes" }, { type: "bytes[]" }], [actions, [swap, settle, take]]);
+  onStatus(`Quoting ${asset} to USDC on Uniswap`);
+  const { raw } = await quoteToUsdc(asset, from, amountIn, slippage, account);
+  if (!raw) throw new Error("Uniswap returned no route");
+  // permitData goes back only together with its signature; permitTransaction is never sent.
+  const body: Record<string, unknown> = { ...raw };
+  delete body.permitData;
+  delete body.permitTransaction;
+  const { permitData } = raw;
+  if (permitData) {
+    onStatus("Signing the Permit2 allowance");
+    body.signature = await signTypedData(config, {
+      account,
+      domain: permitData.domain,
+      types: permitData.types,
+      // The typed data names one struct besides the domain: the Permit2 permit to sign.
+      primaryType: Object.keys(permitData.types).find((name) => name !== "EIP712Domain"),
+      message: permitData.values,
+    } as Parameters<typeof signTypedData>[1]);
+    body.permitData = permitData;
+  }
 
-  const before = await usdcBalance(account);
-  onStep("Swapping on Uniswap");
-  const hash = await writeContract(config, {
-    chainId: SEPOLIA.chainId,
-    address: SEPOLIA.universalRouter,
-    abi: routerAbi,
-    functionName: "execute",
-    args: ["0x10", [v4Swap], BigInt(Math.floor(Date.now() / 1000) + 600)],
-    value: amountIn,
-  });
-  await waitForTransactionReceipt(config, { chainId: SEPOLIA.chainId, hash });
-  return { usdc: (await usdcBalance(account)) - before, hash };
+  const { swap } = await call<{ swap: { to: Address; from: Address; data: Hex; value?: string } }>("swap", body);
+  if (!swap?.data || swap.data === "0x" || !isHex(swap.data) || !isAddress(swap.to) || !isAddress(swap.from)) {
+    throw new Error("Uniswap returned an empty swap, the quote may have expired");
+  }
+
+  onStatus(`Swapping ${asset} to USDC on ${sources[from].label}`);
+  const before = await usdcBalance(account, from);
+  const hash = await sendTransaction(config, { chainId, to: swap.to, data: swap.data, value: BigInt(swap.value ?? "0") });
+  const receipt = await waitForTransactionReceipt(config, { chainId, hash });
+  if (receipt.status !== "success") throw new Error("The Uniswap swap reverted");
+  return { usdc: (await usdcBalance(account, from)) - before, hash };
 }
 
-async function usdcBalance(account: Address) {
-  return readContract(config, {
-    chainId: SEPOLIA.chainId,
-    address: SEPOLIA.usdc,
-    abi: parseAbi(["function balanceOf(address) view returns (uint256)"]),
+const usdcBalance = (account: Address, from: SourceId) => readContract(config, {
+    chainId: sources[from].chain.id as ChainId,
+    address: usdcOn(from),
+    abi: erc20Abi,
     functionName: "balanceOf",
     args: [account],
   });
-}
-
-export const feeLabel = (fee: number) => `${fee / 10_000}%`;

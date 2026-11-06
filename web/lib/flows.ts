@@ -28,7 +28,9 @@ import { sources } from "./chains";
 import { config, type ChainId } from "./config";
 import { arc, erc20Abi, memoAbi, routerAbi } from "./contracts";
 import { assets, type AssetId, type Plan } from "./plan";
+import { tokenBySymbol } from "./tokens";
 import { MAX_ROUNDS, ROUND_SHARE } from "./loop";
+import type { PoolPair } from "./pools";
 import { fullRange, mintPosition } from "./positions";
 import { rangeTicks } from "./quote";
 
@@ -69,7 +71,8 @@ export type Context = {
   invoiceId?: Hex;
   replyTo?: Address;
   /// USDC/EURC pool state on Arc, for wallet-side liquidity.
-  pool?: { tick: number; sqrtPrice: number };
+  /// The pool the user adds liquidity to. `open` is the market price to initialize it at when nobody has.
+  pool?: { pair: PoolPair; tick: number; sqrtPrice: number; open?: bigint };
 };
 
 const none = { limit: 0n, data: "0x" as Hex };
@@ -191,17 +194,16 @@ export async function sendThroughRouter(context: Context, onStep: (label: string
   onStep(`Waiting for ${source.label}`);
   const receipt = await waitForTransactionReceipt(config, { chainId, hash: txHash });
   const [sent] = parseEventLogs({ abi: routerAbi, eventName: "Sent", logs: receipt.logs });
-  return { key: orderKey(intent, sent.args.id, context.account), txHash, sourceChainId: chainId, explorer: router.explorer };
+  return { key: orderKey(intent, sent.args.id, context.account), txHash, sourceChainId: chainId, explorer: source.explorer };
 }
 
-const arcTokens: Record<AssetId, Address> = {
-  USDC: arc.usdc,
-  EURC: arc.eurc,
-  ETH: arc.weth,
-  WETH: arc.weth,
-  cirBTC: arc.cirbtc,
+const arcToken = (asset: AssetId): Address => {
+  const address = tokenBySymbol[asset]?.arc;
+  if (!address) throw new Error(`${asset} does not bridge to Arc`);
+  return address;
 };
-const kitTokens: Record<AssetId, string> = { USDC: "USDC", EURC: "EURC", ETH: "wETH", WETH: "wETH", cirBTC: "cirBTC" };
+/// Circle's kits name wrapped ether wETH; every other asset goes by its symbol.
+const kitToken = (asset: AssetId) => (asset === "WETH" || asset === "ETH" ? "wETH" : asset);
 
 type Step = { name: string; explorerUrl?: string };
 export type WalletResult = { steps: Step[] };
@@ -231,14 +233,14 @@ export async function sendThroughWallet(context: Context, onStep: (label: string
   const steps: Step[] = [];
 
   const asset = plan.asset;
-  const before = await arcBalance(arcTokens[asset], account);
+  const before = await arcBalance(arcToken(asset), account);
 
   onStep(`Bridging ${asset} from ${sources[plan.from].label} with Bridge Kit`);
   let bridged = await kit.bridge({
     from: { adapter, chain: sources[plan.from].kitChain as never },
-    to: { adapter, chain: "Arc_Testnet" as never },
+    to: { adapter, chain: arc.kitChain as never },
     amount: plan.amount,
-    token: kitTokens[asset] as never,
+    token: kitToken(asset) as never,
     config: { transferSpeed: plan.speed === "fast" ? "FAST" : "SLOW" },
   });
   if (bridged.state === "error") {
@@ -250,21 +252,21 @@ export async function sendThroughWallet(context: Context, onStep: (label: string
     steps.push({ name: step.name, explorerUrl: "explorerUrl" in step ? (step.explorerUrl as string) : undefined });
   }
 
-  const arrived = (await arcBalance(arcTokens[asset], account)) - before;
+  const arrived = (await arcBalance(arcToken(asset), account)) - before;
   await switchChain(config, { chainId: arc.chainId });
 
   const swap = async (from: AssetId, to: AssetId, amount: bigint): Promise<bigint> => {
     if (from === to || amount === 0n) return amount;
     onStep(`Swapping ${from} into ${to} with Circle Swap`);
-    const toBefore = await arcBalance(arcTokens[to], account);
+    const toBefore = await arcBalance(arcToken(to), account);
     const result = await kit.swap({
-      from: { adapter, chain: "Arc_Testnet" },
-      tokenIn: kitTokens[from] as never,
-      tokenOut: kitTokens[to] as never,
+      from: { adapter, chain: arc.kitChain as never },
+      tokenIn: kitToken(from) as never,
+      tokenOut: kitToken(to) as never,
       amountIn: formatUnits(amount, assets[from].decimals),
       config: { slippageBps: Math.round(Number(plan.slippage) * 100) },
     });
-    const received = (await arcBalance(arcTokens[to], account)) - toBefore;
+    const received = (await arcBalance(arcToken(to), account)) - toBefore;
     steps.push({ name: `Swapped ${from} into ${formatUnits(received, assets[to].decimals)} ${to}`, explorerUrl: tx(result.txHash) });
     return received;
   };
@@ -280,7 +282,7 @@ export async function sendThroughWallet(context: Context, onStep: (label: string
         abi: memoAbi,
         functionName: "memo",
         args: [
-          arcTokens[token],
+          arcToken(token),
           encodeFunctionData({
             abi: erc20Abi,
             functionName: "transfer",
@@ -296,30 +298,40 @@ export async function sendThroughWallet(context: Context, onStep: (label: string
     }
     case "hold": {
       const held = await swap(asset, plan.hold, arrived);
-      await sendOn(arcTokens[plan.hold], held, account, recipient, steps);
+      await sendOn(arcToken(plan.hold), held, account, recipient, steps);
       break;
     }
     case "lend": {
       const usdc = await swap(asset, "USDC", arrived);
       onStep("Depositing into Morpho with Circle Earn");
       const deposit = await kit.earn.deposit({
-        from: { adapter, chain: "Arc_Testnet" },
-        vaultAddress: plan.vault || arc.morphoVault,
+        from: { adapter, chain: arc.kitChain as never },
+        vaultAddress: plan.vault || arc.morphoVault!,
         amount: formatUnits(usdc, 6),
       });
       steps.push({ name: "Lending on Morpho", explorerUrl: tx("txHash" in deposit ? String(deposit.txHash) : undefined) });
       break;
     }
     case "pool": {
-      // Half of the value on each side of the USDC/EURC pool.
-      const half = arrived / 2n;
-      const usdc = asset === "EURC" ? await swap("EURC", "USDC", half) : await swap(asset, "USDC", asset === "USDC" ? arrived - half : half);
-      const eurc = asset === "USDC" ? await swap("USDC", "EURC", half) : await swap(asset, "EURC", arrived - half);
       const pool = context.pool;
       if (!pool) throw new Error("Pool price is not loaded yet");
-      const range = plan.range === "full" ? fullRange() : rangeTicks(pool.tick, Number(plan.range));
+      const { pair } = pool;
+      // Half of the value on each side of the pair; whatever is already one side stays as it is.
+      const half = arrived / 2n;
+      const a = await swap(asset, pair.a, half);
+      const b = await swap(asset, pair.b, arrived - half);
+      const spacing = pair.tickSpacing;
+      const range = plan.range === "full" ? fullRange(spacing) : rangeTicks(pool.tick, Number(plan.range), spacing);
       const minted = await mintPosition(
-        { account, owner: recipient, usdc, eurc, sqrtPrice: pool.sqrtPrice, range },
+        {
+          account,
+          owner: recipient,
+          pair,
+          amounts: { [pair.a]: a, [pair.b]: b },
+          sqrtPrice: pool.sqrtPrice,
+          range,
+          open: pool.open,
+        },
         onStep,
       );
       steps.push({ name: `Uniswap position #${minted.tokenId} minted`, explorerUrl: tx(minted.hash) });
@@ -360,9 +372,9 @@ async function loop(
   onStep: (label: string) => void,
 ): Promise<Step[]> {
   const slippageBps = Math.round(Number(plan.slippage) * 100);
-  const from = { adapter, chain: "Arc_Testnet" as const };
+  const from = { adapter, chain: arc.kitChain as never };
   const steps: Step[] = [];
-  const quote = await kit.borrow.getMaxBorrow({ chain: "Arc_Testnet", marketId: arc.cirbtcMarket, collateralAmount: collateral });
+  const quote = await kit.borrow.getMaxBorrow({ chain: arc.kitChain as never, marketId: arc.cirbtcMarket, collateralAmount: collateral });
   const lltv = 0.86;
   const collateralValue = Number(quote.maxBorrowAmount.amount) / lltv;
   let remaining = collateralValue * (Number(plan.leverage) - 1);

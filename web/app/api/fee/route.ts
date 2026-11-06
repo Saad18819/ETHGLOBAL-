@@ -1,4 +1,5 @@
-const IRIS = "https://iris-api-sandbox.circle.com";
+import { IRIS } from "@/lib/network";
+
 const ARC_DOMAIN = 26;
 
 /// CCTP fee from a source domain to Arc, in basis points, for fast and standard transfers.
