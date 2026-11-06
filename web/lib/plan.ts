@@ -78,6 +78,9 @@ export const assets: Record<AssetId, { decimals: number; sources: SourceId[]; ex
 export const bridgesNatively = (asset: AssetId, from: SourceId) =>
   Boolean(tokenBySymbol[asset]?.bridge.includes(from));
 
+/// Native ETH on a chain WETH bridges from can be wrapped and moved as WETH.
+export const wrapsIntoWeth = (asset: AssetId, from: SourceId) => asset === "ETH" && bridgesNatively("WETH", from);
+
 export const ranges: Record<Range, string> = {
   full: "full range",
   "20": "within 20% of the price",
@@ -90,13 +93,15 @@ export const ranges: Record<Range, string> = {
 /// Uniswap first, where its liquidity is.
 export function viaUniswap(plan: Pick<Plan, "asset" | "from" | "next" | "hold">): boolean {
   if (plan.asset === "USDC") return false;
+  if (wrapsIntoWeth(plan.asset, plan.from) && plan.next === "hold" && plan.hold === "WETH") return false;
   if (!bridgesNatively(plan.asset, plan.from)) return true;
   const holdsItself = plan.next === "hold" && plan.hold === plan.asset;
   return !(holdsItself || tokenBySymbol[plan.asset].arcSwap);
 }
 
 /// The asset that leaves the source chain.
-export const bridgedAsset = (plan: Plan): AssetId => (viaUniswap(plan) ? "USDC" : plan.asset);
+export const bridgedAsset = (plan: Plan): AssetId =>
+  viaUniswap(plan) ? "USDC" : wrapsIntoWeth(plan.asset, plan.from) ? "WETH" : plan.asset;
 
 /// Router: USDC from a chain with a CCIP lane, finished by the settlement contract.
 /// Wallet: bridged with Bridge Kit, finished from the user's wallet on Arc with Circle kits.
@@ -174,5 +179,6 @@ export function normalizePlan(plan: Plan): Plan {
 /// itself when Circle bridges it natively.
 export function holdOptions(asset: AssetId, from: SourceId): HoldToken[] {
   const own = bridgesNatively(asset, from) && !arcSwappable.includes(asset) ? [asset] : [];
+  if (wrapsIntoWeth(asset, from) && !arcSwappable.includes("WETH")) own.push("WETH");
   return [...arcSwappable, ...own];
 }

@@ -5,6 +5,7 @@ import {
   formatUnits,
   isAddress,
   keccak256,
+  parseAbi,
   parseEventLogs,
   parseUnits,
   stringToHex,
@@ -24,7 +25,7 @@ import {
 } from "wagmi/actions";
 import { mainnet } from "wagmi/chains";
 
-import { sources } from "./chains";
+import { sources, type SourceId } from "./chains";
 import { config, type ChainId } from "./config";
 import { arc, erc20Abi, memoAbi, routerAbi } from "./contracts";
 import { assets, type AssetId, type Plan } from "./plan";
@@ -204,6 +205,23 @@ const arcToken = (asset: AssetId): Address => {
 };
 /// Circle's kits name wrapped ether wETH; every other asset goes by its symbol.
 const kitToken = (asset: AssetId) => (asset === "WETH" || asset === "ETH" ? "wETH" : asset);
+
+/// Wraps native ETH into WETH on the source chain, so Circle can bridge it.
+export async function wrapEth(from: SourceId, amount: bigint, onStep: (label: string) => void) {
+  const weth = tokenBySymbol.WETH?.sources[from];
+  if (!weth || weth === "native") throw new Error(`No WETH on ${sources[from].label}`);
+  const chainId = sources[from].chain.id as ChainId;
+  await switchChain(config, { chainId });
+  onStep("Wrapping ETH into WETH");
+  const hash = await writeContract(config, {
+    chainId,
+    address: weth,
+    abi: parseAbi(["function deposit() payable"]),
+    functionName: "deposit",
+    value: amount,
+  });
+  await waitForTransactionReceipt(config, { chainId, hash });
+}
 
 type Step = { name: string; explorerUrl?: string };
 export type WalletResult = { steps: Step[] };

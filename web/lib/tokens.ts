@@ -24,7 +24,7 @@ export type Token = {
   bridge: SourceId[];
 };
 
-const mainnetTokens: Token[] = [
+export const mainnetTokens: Token[] = [
   {
     symbol: "USDC",
     name: "USD Coin",
@@ -483,6 +483,26 @@ const testnetTokens: Token[] = [
     arc: "0xf0C4a4CE82A5746AbAAd9425360Ab04fbBA432BF",
     arcSwap: true,
     bridge: ["ethereum"],
+  },
+  // Sepolia tokens with a Uniswap v4 pool against Circle's USDC that quotes. LINK from docs.chain.link,
+  // available from faucets.chain.link.
+  {
+    symbol: "LINK",
+    name: "Chainlink",
+    kind: "defi",
+    decimals: 18,
+    sources: { ethereum: "0x779877A7B0D9E8603169DdbD7836e478b4624789" },
+    arcSwap: false,
+    bridge: [],
+  },
+  {
+    symbol: "UNI",
+    name: "Uniswap",
+    kind: "defi",
+    decimals: 18,
+    sources: { ethereum: "0x1f9840a85d5aF5bf1D1762F925BDADdC4201F984" },
+    arcSwap: false,
+    bridge: [],
   },
 ];
 

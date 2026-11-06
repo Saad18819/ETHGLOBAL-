@@ -230,3 +230,4 @@ export function Sentence({
 function shortAddress(value: string) {
   return /^0x[0-9a-fA-F]{40}$/.test(value) ? `${value.slice(0, 6)}…${value.slice(-4)}` : value;
 }
+
