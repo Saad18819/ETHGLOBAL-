@@ -1,6 +1,4 @@
-.page {
-  display: grid;
-  gap: 36px;
+.history {
   max-width: 720px;
 }
 
@@ -82,17 +80,7 @@
   font-size: 13px;
 }
 
-.links a,
-.arrival a {
+.links a {
   color: var(--muted);
 }
 
-.arrival {
-  display: grid;
-  grid-template-columns: 1fr auto auto;
-  gap: 16px;
-  align-items: baseline;
-  padding: 10px 0;
-  border-bottom: 1px solid var(--line);
-  font-size: 14px;
-}

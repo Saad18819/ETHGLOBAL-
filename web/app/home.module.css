@@ -24,6 +24,13 @@
   color: var(--ink);
 }
 
+/* History sits under the move, in the same column as the sentence. */
+.below {
+  max-width: 1280px;
+  margin: 0 auto;
+  padding: 0 40px 96px;
+}
+
 .panel {
   max-width: 1280px;
   margin: 0 auto;
@@ -34,6 +41,10 @@
   .tabs {
     gap: 20px;
     padding: 24px 16px 0;
+  }
+
+  .below {
+    padding: 0 16px 64px;
   }
 
   .panel {

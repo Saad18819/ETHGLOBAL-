@@ -9,7 +9,6 @@ import { History } from "@/components/History";
 
 const tabs = [
   { id: "move", label: "Move" },
-  { id: "history", label: "History" },
   { id: "back", label: "Bridge back" },
 ] as const;
 type Tab = (typeof tabs)[number]["id"];
@@ -53,12 +52,10 @@ export default function Home() {
       {/* Move stays mounted so a running move and its sentence survive switching tabs. */}
       <div hidden={tab !== "move"}>
         <Composer compact />
-      </div>
-      {tab === "history" && (
-        <div className={styles.panel}>
+        <div className={styles.below}>
           <History />
         </div>
-      )}
+      </div>
       {tab === "back" && (
         <div className={styles.panel}>
           <BridgeBack />

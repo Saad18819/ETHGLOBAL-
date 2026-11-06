@@ -1,4 +1,4 @@
-import type { Address } from "viem";
+import { getAddress, type Address } from "viem";
 
 import type { SourceId } from "./chains";
 import { isTestnet } from "./network";
@@ -468,7 +468,7 @@ const testnetTokens: Token[] = [
     name: "Wrapped Ether",
     kind: "eth",
     decimals: 18,
-    sources: { ethereum: "0xfFf9976782d46CC05630D1f6eBAB18b2324d6B14" },
+    sources: { ethereum: "0xfFf9976782d46CC05630D1f6eBAb18b2324d6B14" },
     arc: "0x2c4047028a72803939b6fb674D01bC059B5C4961",
     // Circle Swap has no WETH route on Arc testnet.
     arcSwap: false,
@@ -506,7 +506,18 @@ const testnetTokens: Token[] = [
   },
 ];
 
-export const tokens = isTestnet ? testnetTokens : mainnetTokens;
+/// Addresses are checksummed on load: viem rejects a wrongly cased address, and in a multicall one bad
+/// address fails every balance read on that chain.
+const checksummed = (list: Token[]): Token[] =>
+  list.map((token) => ({
+    ...token,
+    sources: Object.fromEntries(
+      Object.entries(token.sources).map(([chain, address]) => [chain, address === "native" ? address : getAddress(address.toLowerCase())]),
+    ) as Token["sources"],
+    arc: token.arc && getAddress(token.arc.toLowerCase()),
+  }));
+
+export const tokens = checksummed(isTestnet ? testnetTokens : mainnetTokens);
 
 export const tokenBySymbol = Object.fromEntries(tokens.map((token) => [token.symbol, token])) as Record<string, Token>;
 

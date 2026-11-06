@@ -17,7 +17,7 @@ export const testnetSwaps: Partial<Record<SourceId, Deployment>> = {
     quoter: "0x68aFa8b853cAa7a2D40B0F6AEE5C4DbC147C8244",
     universalRouter: "0x7E4f6c5e954Da5c61B3423D81E2277431Ac043f3",
     usdc: "0x1c7D4B196Cb0C7B01d743Fbc6116a902379C7238",
-    weth: "0xfFf9976782d46CC05630D1f6eBAB18b2324d6B14",
+    weth: "0xfFf9976782d46CC05630D1f6eBAb18b2324d6B14",
   },
   base: {
     chainId: baseSepolia.id,

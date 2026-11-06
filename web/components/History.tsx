@@ -5,6 +5,7 @@ import { useQuery } from "@tanstack/react-query";
 import { useConnection } from "wagmi";
 
 import styles from "./History.module.css";
+import type { Activity, Purpose } from "@/app/api/activity/route";
 import { protocolOf, protocols, swatchStyle } from "@/lib/brand";
 import { purposeTitle, useHistory, type Entry } from "@/lib/history";
 
@@ -18,92 +19,136 @@ const statusText: Record<Entry["status"], string> = {
   stuck: "Burned, not minted yet",
 };
 
-type Arrival = { at: number; symbol: string; amount: number; href: string };
+/// What a move read from the chain did, for arrivals no move in this browser explains.
+const inferred: Record<Purpose, string> = {
+  pay: "paid someone on Arc",
+  hold: "held it on Arc",
+  pool: "added it to a Uniswap pool on Arc",
+  lend: "lent it on Morpho",
+  loop: "looped it on Morpho",
+  back: "sent it back from Arc",
+};
 
-/// Past moves from this browser and every bridge that reached the wallet on Arc.
+/// A local move explains an arrival when it started up to this long before the mint.
+const MATCH = 30 * 60_000;
+
+type Row = {
+  key: string;
+  at: number;
+  purpose: Purpose;
+  summary: string;
+  status?: Entry["status"];
+  error?: string;
+  stuck?: Entry["stuck"];
+  links: { name: string; href: string }[];
+};
+
+/// Every move for the connected wallet: what was moved, what for, and how it went. Moves made in this
+/// browser carry their own description; anything else that reached Arc is read from the explorer, with its
+/// purpose taken from what the wallet did next.
 export function History() {
   const { address } = useConnection();
   const entries = useHistory(address);
-  const arrivals = useQuery({
-    queryKey: ["arrivals", address],
+  const activity = useQuery({
+    queryKey: ["activity", address],
     enabled: Boolean(address),
-    queryFn: async (): Promise<Arrival[]> => {
-      const response = await fetch(`/api/arrivals?address=${address}`);
-      return ((await response.json()) as { arrivals?: Arrival[] }).arrivals ?? [];
+    refetchInterval: 30_000,
+    queryFn: async (): Promise<Activity[]> => {
+      const response = await fetch(`/api/activity?address=${address}`);
+      if (!response.ok) throw new Error("The Arc explorer is not answering right now");
+      return ((await response.json()) as { activity?: Activity[] }).activity ?? [];
     },
   });
 
-  if (!address) {
-    return (
-      <div className={styles.page}>
-        <p className={styles.muted}>Connect a wallet to see what it moved and what for.</p>
-      </div>
+  if (!address) return null;
+
+  const used = new Set<string>();
+  const rows: Row[] = (activity.data ?? []).map((item) => {
+    const match = entries.find(
+      (entry) =>
+        !used.has(entry.id) &&
+        (item.kind === "departure"
+          ? entry.purpose === "back" && Math.abs(item.at - entry.at) < MATCH
+          : entry.purpose !== "back" && entry.at <= item.at && item.at - entry.at < MATCH),
     );
+    if (match) used.add(match.id);
+    const amount = `${item.amount.toLocaleString("en-US", { maximumFractionDigits: 6 })} ${item.symbol}`;
+    return {
+      key: item.href,
+      at: item.at,
+      purpose: match?.purpose ?? item.purpose,
+      summary:
+        match?.summary ??
+        (item.kind === "departure"
+          ? `Sent ${amount} from Arc to another chain`
+          : `${amount} arrived on Arc, and then ${inferred[item.purpose]}`),
+      status: match?.status,
+      error: match?.error,
+      stuck: match?.stuck,
+      links: [
+        { name: item.kind === "departure" ? "Sent from Arc" : "Arrived on Arc", href: item.href },
+        ...(match?.steps.filter((step): step is { name: string; href: string } => Boolean(step.href)) ?? []),
+        ...item.actions,
+      ],
+    };
+  });
+  // Moves that never reached Arc, such as a failed or still settling one, from this browser.
+  for (const entry of entries.filter((entry) => !used.has(entry.id))) {
+    rows.push({
+      key: entry.id,
+      at: entry.at,
+      purpose: entry.purpose,
+      summary: entry.summary,
+      status: entry.status,
+      error: entry.error,
+      stuck: entry.stuck,
+      links: entry.steps.filter((step): step is { name: string; href: string } => Boolean(step.href)),
+    });
   }
+  rows.sort((a, b) => b.at - a.at);
 
   return (
-    <div className={styles.page}>
-
-      <section>
-        <h2 className={styles.heading}>Your moves</h2>
-        {entries.length === 0 && <p className={styles.muted}>Moves made from this browser show up here.</p>}
-        <ul className={styles.list}>
-          {entries.map((entry) => {
-            const brand = protocols[entry.purpose === "back" ? "arc" : protocolOf[entry.purpose]];
-            return (
-              <li key={entry.id} className={styles.entry}>
-                <div className={styles.row}>
-                  <span className={styles.tag} style={swatchStyle(brand)}>
-                    {purposeTitle(entry.purpose)}
-                  </span>
-                  <span className={styles.when}>{when(entry.at)}</span>
-                </div>
-                <p className={styles.summary}>{entry.summary}.</p>
-                <p className={styles.status} data-status={entry.status}>
-                  {statusText[entry.status]}
-                  {entry.error && entry.status === "failed" ? `: ${entry.error}` : ""}
-                  {entry.stuck && (
+    <section className={styles.history}>
+      <h2 className={styles.heading}>History</h2>
+      {activity.isError && <p className={styles.muted}>{activity.error.message}.</p>}
+      {activity.isFetched && rows.length === 0 && <p className={styles.muted}>Nothing moved yet.</p>}
+      <ul className={styles.list}>
+        {rows.map((row) => {
+          const brand = protocols[row.purpose === "back" ? "arc" : protocolOf[row.purpose]];
+          return (
+            <li key={row.key} className={styles.entry}>
+              <div className={styles.row}>
+                <span className={styles.tag} style={swatchStyle(brand)}>
+                  {purposeTitle(row.purpose)}
+                </span>
+                <span className={styles.when}>{when(row.at)}</span>
+              </div>
+              <p className={styles.summary}>{row.summary}.</p>
+              {row.status && row.status !== "done" && (
+                <p className={styles.status} data-status={row.status}>
+                  {statusText[row.status]}
+                  {row.error && row.status === "failed" ? `: ${row.error}` : ""}
+                  {row.stuck && (
                     <>
                       {". "}
-                      <Link href={`/finish?from=${entry.stuck.from}&tx=${entry.stuck.tx}`}>Finish it on Arc</Link>
+                      <Link href={`/finish?from=${row.stuck.from}&tx=${row.stuck.tx}`}>Finish it on Arc</Link>
                     </>
                   )}
                 </p>
-                {entry.steps.some((step) => step.href) && (
-                  <p className={styles.links}>
-                    {entry.steps
-                      .filter((step) => step.href)
-                      .map((step) => (
-                        <a key={step.href} href={step.href} target="_blank" rel="noreferrer">
-                          {step.name}
-                        </a>
-                      ))}
-                  </p>
-                )}
-              </li>
-            );
-          })}
-        </ul>
-      </section>
-
-      <section>
-        <h2 className={styles.heading}>Arrived on Arc</h2>
-        <p className={styles.muted}>Every bridge that minted to this wallet on Arc, read from the explorer.</p>
-        <ul className={styles.list}>
-          {(arrivals.data ?? []).map((arrival) => (
-            <li key={arrival.href} className={styles.arrival}>
-              <span>
-                {arrival.amount.toLocaleString("en-US", { maximumFractionDigits: 6 })} {arrival.symbol}
-              </span>
-              <span className={styles.when}>{when(arrival.at)}</span>
-              <a href={arrival.href} target="_blank" rel="noreferrer">
-                View
-              </a>
+              )}
+              {row.links.length > 0 && (
+                <p className={styles.links}>
+                  {row.links.map((link) => (
+                    <a key={link.href} href={link.href} target="_blank" rel="noreferrer">
+                      {link.name}
+                    </a>
+                  ))}
+                </p>
+              )}
             </li>
-          ))}
-          {arrivals.isFetched && arrivals.data?.length === 0 && <p className={styles.muted}>Nothing yet.</p>}
-        </ul>
-      </section>
-    </div>
+          );
+        })}
+      </ul>
+    </section>
   );
 }
