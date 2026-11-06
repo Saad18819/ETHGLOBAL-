@@ -64,6 +64,10 @@ but they have **no code on Arc Testnet** (probably mainnet only).
 
 Fee tiers 100, 3000 and 10000 are not initialized.
 
+**Phase 3 manual swap ✅:** 1 USDC → 0.851112 EURC through the UniversalRouter,
+tx `0x059bccf3a52d7eae09fb4125c216cd24702b7a786b1be62b7326e0e8029c8dc9`.
+The Arc router takes the **new** v4 params format (`ExactInputSingleParams` with `minHopPriceX36`).
+
 ## Ethereum Sepolia (chain id 11155111)
 
 | Contract | Address |
