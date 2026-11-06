@@ -4,7 +4,6 @@ import { useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 
 import styles from "./stats.module.css";
-import { Segmented } from "@/components/Segmented";
 import { protocols, tokenColor } from "@/lib/brand";
 import { sources, type SourceId } from "@/lib/chains";
 import { purposeTitle } from "@/lib/history";
@@ -214,7 +213,6 @@ function Recent({ intents }: { intents: Intent[] }) {
 /// Every move made with the app, by any wallet. Each one was checked against its transaction on chain
 /// before it was counted.
 export default function StatsPage() {
-  const [measure, setMeasure] = useState<Measure>("volume");
   const stats = useQuery({
     queryKey: ["stats"],
     refetchInterval: 30_000,
@@ -247,33 +245,21 @@ export default function StatsPage() {
 
       {data && (
         <>
-          <div className={styles.controls}>
-            <Segmented
-              label="Measure"
-              value={measure}
-              options={[
-                { value: "volume", label: "By volume" },
-                { value: "count", label: "By number of moves" },
-              ]}
-              onChange={(value) => setMeasure(value as Measure)}
-            />
-          </div>
           <div className={styles.cards}>
-            <Breakdown
-              title="Use cases"
-              measure={measure}
-              items={categories(data.byPurpose, (key) => purposeNames[key] ?? key, (key) => purposeColors[key] ?? OTHER)}
-            />
-            <Breakdown
-              title="Source chains"
-              measure={measure}
-              items={categories(data.byChain, chainLabel, (key) => chainColors[key] ?? OTHER)}
-            />
-            <Breakdown
-              title="Source tokens"
-              measure={measure}
-              items={categories(data.byToken, (key) => key, (key) => tokenColor(key).accent)}
-            />
+            {[
+              {
+                name: "Use cases",
+                items: categories(data.byPurpose, (key) => purposeNames[key] ?? key, (key) => purposeColors[key] ?? OTHER),
+              },
+              { name: "Source chains", items: categories(data.byChain, chainLabel, (key) => chainColors[key] ?? OTHER) },
+              {
+                name: "Source tokens",
+                items: categories(data.byToken, (key) => key, (key) => tokenColor(key).accent),
+              },
+            ].flatMap(({ name, items }) => [
+              <Breakdown key={`${name}-volume`} title={`${name} by volume`} items={items} measure="volume" />,
+              <Breakdown key={`${name}-count`} title={`${name} by number of moves`} items={items} measure="count" />,
+            ])}
           </div>
           <Recent intents={data.recent} />
         </>
