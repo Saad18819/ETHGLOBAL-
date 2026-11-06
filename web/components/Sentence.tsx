@@ -4,7 +4,8 @@ import { Field, Fixed, Select } from "./Pill";
 import styles from "./Sentence.module.css";
 import { sources } from "@/lib/chains";
 import { liquidationDrop, MAX_LEVERAGE } from "@/lib/loop";
-import { holdingOf, short, type Holding } from "@/lib/balances";
+import { holdingOf, short, spendable, type Holding } from "@/lib/balances";
+import { pools } from "@/lib/pools";
 import { protocolOf, protocols, tokenColor } from "@/lib/brand";
 import { percent, usd, type Vault } from "@/lib/markets";
 import {
@@ -57,6 +58,14 @@ export function Sentence({
         value={plan.amount}
         onChange={(amount) => set({ amount })}
         hint={held ? `of ${short(held.amount)}` : undefined}
+        presets={
+          held
+            ? [
+                { label: "50%", value: spendable(plan.asset, plan.from, held.amount, 0.5) },
+                { label: "max", value: spendable(plan.asset, plan.from, held.amount) },
+              ]
+            : undefined
+        }
         swatch={token}
       />{" "}
       <Select<AssetId>
@@ -91,7 +100,7 @@ export function Sentence({
           label="And then"
           swatch={brand}
           value={plan.next}
-          options={nextSteps.map((step) => ({ value: step.id, label: step.verb.replace(/ (as|on|to)$/, "") }))}
+          options={nextSteps.map((step) => ({ value: step.id, label: step.verb.replace(/ (as|on|to|to the)$/, "") }))}
           onChange={(next) => set({ next })}
         >
           {stepOf(plan.next).verb}
@@ -116,6 +125,14 @@ export function Sentence({
       {plan.next === "pool" && (
         <>
           {" "}
+          <Select<string>
+            label="Pool"
+            swatch={brand}
+            value={plan.pool}
+            options={pools.map((pool) => ({ value: pool.id, label: pool.id, hint: `${pool.fee / 10_000}%` }))}
+            onChange={(pool) => set({ pool })}
+          />{" "}
+          pool,{" "}
           <Select<Range>
             label="Range"
             swatch={brand}

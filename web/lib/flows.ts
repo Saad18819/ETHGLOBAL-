@@ -30,6 +30,7 @@ import { arc, erc20Abi, memoAbi, routerAbi } from "./contracts";
 import { assets, type AssetId, type Plan } from "./plan";
 import { tokenBySymbol } from "./tokens";
 import { MAX_ROUNDS, ROUND_SHARE } from "./loop";
+import type { PoolPair } from "./pools";
 import { fullRange, mintPosition } from "./positions";
 import { rangeTicks } from "./quote";
 
@@ -70,7 +71,8 @@ export type Context = {
   invoiceId?: Hex;
   replyTo?: Address;
   /// USDC/EURC pool state on Arc, for wallet-side liquidity.
-  pool?: { tick: number; sqrtPrice: number };
+  /// The pool the user adds liquidity to. `open` is the market price to initialize it at when nobody has.
+  pool?: { pair: PoolPair; tick: number; sqrtPrice: number; open?: bigint };
 };
 
 const none = { limit: 0n, data: "0x" as Hex };
@@ -311,15 +313,25 @@ export async function sendThroughWallet(context: Context, onStep: (label: string
       break;
     }
     case "pool": {
-      // Half of the value on each side of the USDC/EURC pool.
-      const half = arrived / 2n;
-      const usdc = asset === "EURC" ? await swap("EURC", "USDC", half) : await swap(asset, "USDC", asset === "USDC" ? arrived - half : half);
-      const eurc = asset === "USDC" ? await swap("USDC", "EURC", half) : await swap(asset, "EURC", arrived - half);
       const pool = context.pool;
       if (!pool) throw new Error("Pool price is not loaded yet");
-      const range = plan.range === "full" ? fullRange() : rangeTicks(pool.tick, Number(plan.range));
+      const { pair } = pool;
+      // Half of the value on each side of the pair; whatever is already one side stays as it is.
+      const half = arrived / 2n;
+      const a = await swap(asset, pair.a, half);
+      const b = await swap(asset, pair.b, arrived - half);
+      const spacing = pair.tickSpacing;
+      const range = plan.range === "full" ? fullRange(spacing) : rangeTicks(pool.tick, Number(plan.range), spacing);
       const minted = await mintPosition(
-        { account, owner: recipient, usdc, eurc, sqrtPrice: pool.sqrtPrice, range },
+        {
+          account,
+          owner: recipient,
+          pair,
+          amounts: { [pair.a]: a, [pair.b]: b },
+          sqrtPrice: pool.sqrtPrice,
+          range,
+          open: pool.open,
+        },
         onStep,
       );
       steps.push({ name: `Uniswap position #${minted.tokenId} minted`, explorerUrl: tx(minted.hash) });

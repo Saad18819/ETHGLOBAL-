@@ -144,6 +144,7 @@ export function Field({
   label,
   numeric,
   hint,
+  presets,
   swatch,
 }: {
   value: string;
@@ -153,29 +154,46 @@ export function Field({
   label: string;
   numeric?: boolean;
   hint?: string;
+  /// Quick values shown under the hint, such as half or all of a balance.
+  presets?: { label: string; value: string }[];
   swatch?: Swatch;
 }) {
-  const width = Math.max((value || placeholder || "").length, numeric ? 1 : 4);
   return (
     <span
       className={`${styles.pill} ${swatch ? styles.swatch : styles[tone]} ${styles.field}`}
       style={swatch && swatchStyle(swatch)}
     >
-      <input
-        aria-label={label}
-        value={value}
-        placeholder={placeholder}
-        inputMode={numeric ? "decimal" : "text"}
-        spellCheck={false}
-        autoComplete="off"
-        style={{ width: `${width + 0.15}ch` }}
-        onChange={(event) => {
-          const next = event.target.value;
-          if (numeric && !/^\d*\.?\d*$/.test(next)) return;
-          onChange(next);
-        }}
-      />
-      {hint && <span className={styles.badge}>{hint}</span>}
+      {/* The hidden copy of the text sizes the input to exactly what is typed. */}
+      <span className={styles.sizer} data-value={(value || placeholder || "").padEnd(numeric ? 1 : 4, " ")}>
+        <input
+          aria-label={label}
+          value={value}
+          placeholder={placeholder}
+          inputMode={numeric ? "decimal" : "text"}
+          spellCheck={false}
+          autoComplete="off"
+          size={1}
+          onChange={(event) => {
+            const next = event.target.value;
+            if (numeric && !/^\d*\.?\d*$/.test(next)) return;
+            onChange(next);
+          }}
+        />
+      </span>
+      {(hint || presets?.length) && (
+        <span className={styles.aside}>
+          {hint && <span>{hint}</span>}
+          {presets?.length ? (
+            <span className={styles.presets}>
+              {presets.map((preset) => (
+                <button key={preset.label} type="button" onClick={() => onChange(preset.value)}>
+                  {preset.label}
+                </button>
+              ))}
+            </span>
+          ) : null}
+        </span>
+      )}
     </span>
   );
 }

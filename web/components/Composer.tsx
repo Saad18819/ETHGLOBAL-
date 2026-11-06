@@ -16,11 +16,12 @@ import { sources } from "@/lib/chains";
 import { arc } from "@/lib/contracts";
 import { cctpFees, resolveRecipient, sendThroughRouter, sendThroughWallet, type RouterResult } from "@/lib/flows";
 import { MAX_LEVERAGE } from "@/lib/loop";
-import { useBalances } from "@/lib/balances";
+import { spendable, useBalances } from "@/lib/balances";
 import { protocolOf, protocols, swatchStyle } from "@/lib/brand";
 import { useMarkets } from "@/lib/markets";
 import { assets, bridgedAsset, defaultPlan, normalizePlan, routeOf, viaUniswap, type NextId, type Plan } from "@/lib/plan";
 import { quoteToUsdc, swapToUsdc } from "@/lib/uniswap";
+import { marketSqrtPriceX96, poolById, usePoolState, type PoolState } from "@/lib/pools";
 import { usePool } from "@/lib/quote";
 
 type Run =
@@ -30,7 +31,7 @@ type Run =
 const outcomes: Record<NextId, string> = {
   pay: "Paid {recipient}",
   hold: "Holding on Arc",
-  pool: "Position minted in the USDC/EURC pool",
+  pool: "Position minted",
   lend: "Lending on Morpho",
   loop: "Looped",
 };
@@ -67,7 +68,7 @@ export function Composer({
   // The settlement contract only deposits into the vault it allowlists; Circle Earn can reach all of them.
   const base =
     !touched && top
-      ? normalizePlan({ ...draft, asset: top.asset, from: top.from, amount: spendable(top.asset, top.amount) })
+      ? normalizePlan({ ...draft, asset: top.asset, from: top.from, amount: spendable(top.asset, top.from, top.amount) })
       : draft;
   const vaults = (markets.data?.vaults ?? []).filter(
     (vault) =>
@@ -76,6 +77,7 @@ export function Composer({
   const vault = vaults.some((v) => v.address === base.vault) ? base.vault : (vaults[0]?.address ?? "");
   const plan = { ...base, vault };
   const lltv = markets.data?.markets.find((m) => m.collateral === "cirBTC")?.lltv;
+  const chosenPool = usePoolState(poolById(plan.pool), markets.data?.prices);
   const domain = sources[plan.from].cctpDomain;
   const fees = useQuery({ queryKey: ["cctp-fee", domain], queryFn: () => cctpFees(domain), staleTime: 60_000 });
 
@@ -132,7 +134,7 @@ export function Composer({
         replyTo,
         poolTick: pool.data?.tick,
         rate: pool.data?.rate,
-        pool: pool.data && { tick: pool.data.tick, sqrtPrice: pool.data.sqrtPrice },
+        pool: chosenPool.data && liquidityTarget(chosenPool.data, markets.data?.prices),
         minOut:
           plan.next === "hold" && plan.hold === "EURC" && pool.data
             ? parseUnits((effectiveAmount * pool.data.rate * slippage).toFixed(6), 6)
@@ -174,6 +176,7 @@ export function Composer({
           plan={plan}
           markets={markets.data && { ...markets.data, vaults }}
           pool={pool.data}
+          chosenPool={chosenPool.data}
           fees={fees.data}
           sourceQuote={uniswap ? sourceQuote.data : undefined}
         />
@@ -236,13 +239,6 @@ export function Composer({
 }
 
 /// A round amount to move from a balance, keeping some native ETH for gas.
-function spendable(asset: Plan["asset"], amount: string) {
-  const value = Number(amount) * (asset === "ETH" ? 0.9 : 1);
-  const digits = asset === "cirBTC" ? 6 : asset === "ETH" || asset === "WETH" ? 4 : 2;
-  const factor = 10 ** digits;
-  return String(Math.floor(value * factor) / factor);
-}
-
 /// Whether the result can be sent to someone other than the connected wallet.
 function forwards(plan: Plan, route: ReturnType<typeof routeOf>) {
   if (plan.next === "hold") return true;
@@ -287,4 +283,13 @@ function parseAmount(amount: string, decimals: number) {
   } catch {
     return 0n;
   }
+}
+
+/// Where liquidity goes in: the live pool price, or the market price for a pool nobody has opened yet.
+function liquidityTarget(state: PoolState, prices: Record<string, number> | undefined) {
+  if (state.exists) return { pair: state.pair, tick: state.tick, sqrtPrice: state.sqrtPrice };
+  if (!prices) throw new Error("Market prices are not loaded yet");
+  const open = marketSqrtPriceX96(state.pair, prices);
+  const sqrtPrice = Number(open) / 2 ** 96;
+  return { pair: state.pair, tick: Math.floor(Math.log(sqrtPrice * sqrtPrice) / Math.log(1.0001)), sqrtPrice, open };
 }

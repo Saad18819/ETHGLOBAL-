@@ -46,9 +46,9 @@ export function useEurcRate() {
 }
 
 /// Tick bounds for a range around the current price, aligned to the pool's tick spacing.
-export function rangeTicks(tick: number, percent: number): [number, number] {
+export function rangeTicks(tick: number, percent: number, spacing: number = eurcPool.tickSpacing): [number, number] {
   const width = Math.log(1 + percent / 100) / Math.log(1.0001);
   const align = (value: number, round: (n: number) => number) =>
-    round(value / eurcPool.tickSpacing) * eurcPool.tickSpacing;
+    round(value / spacing) * spacing;
   return [align(tick - width, Math.floor), align(tick + width, Math.ceil)];
 }

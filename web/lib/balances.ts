@@ -71,3 +71,12 @@ export function short(amount: string) {
   if (value >= 1000) return value.toLocaleString("en-US", { maximumFractionDigits: 0 });
   return Number(value.toPrecision(4)).toString();
 }
+
+/// A round amount up to `share` of a balance, leaving some of a gas token for fees.
+export function spendable(asset: AssetId, from: SourceId, amount: string, share = 1) {
+  const token = assets[asset]?.token;
+  const gas = token?.sources[from] === "native" ? 0.9 : 1;
+  const digits = Math.min(token?.decimals ?? 6, token?.kind === "btc" ? 6 : token?.kind === "eth" ? 4 : 2);
+  const factor = 10 ** digits;
+  return String(Math.floor(Number(amount) * share * gas * factor) / factor);
+}

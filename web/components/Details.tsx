@@ -1,6 +1,6 @@
 "use client";
 
-import type { ReactNode } from "react";
+import { useState, type ReactNode } from "react";
 
 import styles from "./Details.module.css";
 import type { CctpFees } from "@/lib/flows";
@@ -8,6 +8,7 @@ import { arrival, sources } from "@/lib/chains";
 import type { SourceQuote } from "@/lib/uniswap";
 import { feeApr, percent, usd, type Markets } from "@/lib/markets";
 import { isTestnet } from "@/lib/network";
+import type { PoolState } from "@/lib/pools";
 import { liquidationDrop, loopRounds, MAX_LEVERAGE } from "@/lib/loop";
 import { bridgedAsset, ranges, routeOf, type Plan } from "@/lib/plan";
 
@@ -15,6 +16,23 @@ export type PoolStats = { rate: number; usdcDepth: number; eurcDepth: number };
 
 
 type Row = [label: string, value: ReactNode];
+
+/// Rows that answer "what do I get" or warn; everything else waits behind the toggle.
+const summary = new Set([
+  "Arrives",
+  "They get",
+  "Lands as",
+  "You get about",
+  "Price impact",
+  "Pool price",
+  "On Arc mainnet",
+  "Earns about there",
+  "Deposits into",
+  "Pool",
+  "New pool",
+  "Exposure",
+  "Risk",
+]);
 
 /// Where the transaction itself runs, next to the mainnet numbers shown for reference.
 const where = isTestnet ? " on testnet" : "";
@@ -26,10 +44,12 @@ export function Details({
   pool,
   fees,
   sourceQuote,
+  chosenPool,
 }: {
   plan: Plan;
   markets?: Markets;
   pool?: PoolStats;
+  chosenPool?: PoolState;
   fees?: CctpFees;
   sourceQuote?: SourceQuote;
 }) {
@@ -79,7 +99,7 @@ export function Details({
       rows.push(...holdRows(plan, amount * price, markets, pool));
       break;
     case "pool":
-      rows.push(...poolRows(plan, valueUsd, pool, markets));
+      rows.push(...(plan.pool === "USDC/EURC" ? poolRows(plan, valueUsd, pool, markets) : pairRows(plan, valueUsd, chosenPool)));
       break;
     case "lend":
       rows.push(...lendRows(plan, valueUsd, markets));
@@ -89,15 +109,29 @@ export function Details({
       break;
   }
 
+  return <Rows rows={rows} />;
+}
+
+function Rows({ rows }: { rows: Row[] }) {
+  const [open, setOpen] = useState(false);
+  const shown = open ? rows : rows.filter(([label]) => summary.has(label) || label.startsWith("Uniswap on"));
+  const hidden = rows.length - shown.length;
   return (
-    <dl className={styles.details}>
-      {rows.map(([label, value]) => (
-        <div key={label} className={styles.row}>
-          <dt>{label}</dt>
-          <dd>{value}</dd>
-        </div>
-      ))}
-    </dl>
+    <div className={styles.wrap}>
+      <dl className={styles.details}>
+        {shown.map(([label, value]) => (
+          <div key={label} className={styles.row}>
+            <dt>{label}</dt>
+            <dd>{value}</dd>
+          </div>
+        ))}
+      </dl>
+      {(hidden > 0 || open) && (
+        <button type="button" className={styles.toggle} onClick={() => setOpen(!open)} aria-expanded={open}>
+          {open ? "Fewer details" : `${hidden} more ${hidden === 1 ? "detail" : "details"}`}
+        </button>
+      )}
+    </div>
   );
 }
 
@@ -156,6 +190,26 @@ function poolRows(plan: Plan, amount: number, pool?: PoolStats, markets?: Market
     ["Range", ranges[plan.range]],
     ...(plan.range === "full" ? [] : ([["Note", "Earns fees only while the price stays inside the range"]] as Row[])),
   ];
+}
+
+/// Any other pair on Arc. Arc mainnet has no such pool yet, so there are no mainnet numbers to show.
+function pairRows(plan: Plan, valueUsd: number, state?: PoolState): Row[] {
+  if (!state) return [];
+  const { pair } = state;
+  const rows: Row[] = [["Pool", `Uniswap v4 ${pair.id}, ${pair.fee / 10_000}% fee tier${isTestnet ? ", Arc Testnet" : ""}`]];
+  if (!state.exists) {
+    rows.push(["New pool", `Nobody has opened ${pair.id} on Arc yet. You open it at the market price and set its first quotes.`]);
+  } else {
+    rows.push([`Price${where}`, `1 ${pair.a} = ${state.price.toPrecision(5)} ${pair.b}`]);
+    rows.push(["In range now", `about ${usd(state.depthUsd)}`]);
+    rows.push([
+      "Your share",
+      state.depthUsd > 0 ? `about ${percent(valueUsd / (state.depthUsd + valueUsd), 1)} of in-range liquidity` : "all of it",
+    ]);
+  }
+  rows.push(["Split", `about ${usd(valueUsd / 2)} in each of ${pair.a} and ${pair.b}, swapped with Circle Swap`]);
+  rows.push(["Range", ranges[plan.range]]);
+  return rows;
 }
 
 function lendRows(plan: Plan, amount: number, markets?: Markets): Row[] {

@@ -417,8 +417,8 @@ const mainnetTokens: Token[] = [
   }
 ];
 
-/// What runs end to end on testnet: Circle's testnet USDC and EURC everywhere they exist, and the ether and
-/// BTC routes on Sepolia (ETH through Uniswap there, WETH and cirBTC bridged by CCTP for non-USDC).
+/// What runs end to end on testnet: Circle's testnet USDC and EURC everywhere they exist, ETH through Uniswap
+/// on the testnets that have a pool for it, and WETH and cirBTC from Sepolia over CCTP for non-USDC.
 /// Addresses from developers.circle.com/stablecoins and docs.arc.io.
 const testnetTokens: Token[] = [
   {
@@ -458,7 +458,8 @@ const testnetTokens: Token[] = [
     name: "Ether",
     kind: "eth",
     decimals: 18,
-    sources: { ethereum: "native" },
+    // Testnets where Uniswap v4 has a native ETH/USDC pool that quotes (see lib/uniswapTestnet.ts).
+    sources: { ethereum: "native", base: "native", unichain: "native" },
     arcSwap: false,
     bridge: [],
   },
@@ -489,3 +490,5 @@ export const tokens = isTestnet ? testnetTokens : mainnetTokens;
 
 export const tokenBySymbol = Object.fromEntries(tokens.map((token) => [token.symbol, token])) as Record<string, Token>;
 
+/// Assets Circle Swap can swap into on Arc, so they can be paid or held whatever was moved.
+export const arcSwappable = tokens.filter((token) => token.arcSwap).map((token) => token.symbol);

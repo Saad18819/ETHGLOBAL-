@@ -6,7 +6,7 @@ import { config, type ChainId } from "./config";
 import { erc20Abi } from "./contracts";
 import { isTestnet } from "./network";
 import { tokenBySymbol } from "./tokens";
-import { quoteEthToUsdc, swapEthToUsdc } from "./uniswapSepolia";
+import { quoteEthToUsdc, swapEthToUsdc } from "./uniswapTestnet";
 
 /// Swaps on the source chain go through the Uniswap Trading API (via /api/uniswap), routed CLASSIC so the
 /// output lands in the wallet in the same transaction and can be bridged right after. On testnet they go
@@ -68,7 +68,7 @@ export async function quoteToUsdc(
   marketPrice?: number,
 ): Promise<SourceQuote> {
   if (isTestnet) {
-    const quote = await quoteEthToUsdc(amountIn, marketPrice);
+    const quote = await quoteEthToUsdc(from, amountIn, marketPrice);
     if (!quote) throw new Error("no pool has a quote right now");
     return { amountIn, amountOut: quote.amountOut, pools: "v4", deviation: quote.deviation };
   }
@@ -105,9 +105,9 @@ export async function swapToUsdc(
   await switchChain(config, { chainId });
 
   if (isTestnet) {
-    const quote = await quoteEthToUsdc(amountIn);
-    if (!quote) throw new Error("No Uniswap pool on Sepolia has a quote right now");
-    return swapEthToUsdc({ account, amountIn, quote, slippage: slippage / 100, fromWeth: asset === "WETH" }, onStatus);
+    const quote = await quoteEthToUsdc(from, amountIn);
+    if (!quote) throw new Error("No Uniswap pool has a quote right now");
+    return swapEthToUsdc({ from, account, amountIn, quote, slippage: slippage / 100, fromWeth: asset === "WETH" }, onStatus);
   }
 
   const tokenIn = tokenAddress(asset, from);

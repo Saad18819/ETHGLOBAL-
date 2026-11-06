@@ -1,13 +1,13 @@
 import { sourceIds, sources, type SourceId } from "./chains";
-import { tokenBySymbol, tokens, type Token } from "./tokens";
+import { pools } from "./pools";
+import { arcSwappable, tokenBySymbol, tokens, type Token } from "./tokens";
 
 export type { SourceId } from "./chains";
 
 /// A token symbol from the registry in lib/tokens.ts.
 export type AssetId = string;
 export type NextId = "pay" | "hold" | "pool" | "lend" | "loop";
-/// Assets Circle Swap can swap into on Arc, so they can be paid or held whatever was moved.
-export const arcSwappable = tokens.filter((token) => token.arcSwap).map((token) => token.symbol);
+export { arcSwappable };
 export type PayToken = string;
 export type HoldToken = string;
 export type Range = "full" | "20" | "5" | "1";
@@ -23,6 +23,8 @@ export type Plan = {
   payToken: PayToken;
   hold: HoldToken;
   range: Range;
+  /// Pool id from lib/pools.ts, such as "USDC/EURC".
+  pool: string;
   vault: string;
   leverage: string;
   speed: Speed;
@@ -41,6 +43,7 @@ export const defaultPlan: Plan = {
   payToken: "EURC",
   hold: "USDC",
   range: "full",
+  pool: "USDC/EURC",
   vault: "",
   leverage: "1.5",
   speed: "fast",
@@ -109,7 +112,9 @@ export function routeOf(plan: Plan): Route | undefined {
     Boolean(sources[plan.from].router?.address) &&
     routerActions.includes(plan.next) &&
     !(plan.next === "hold" && plan.hold !== "EURC" && plan.hold !== "USDC") &&
-    !(plan.next === "pay" && plan.payToken !== "USDC" && plan.payToken !== "EURC");
+    !(plan.next === "pay" && plan.payToken !== "USDC" && plan.payToken !== "EURC") &&
+    // The settlement contract provides only to the USDC/EURC pool it is configured with.
+    !(plan.next === "pool" && plan.pool !== "USDC/EURC");
   if (routerFits) return "router";
   return walletActions.includes(plan.next) ? "wallet" : undefined;
 }
@@ -137,8 +142,8 @@ export const nextSteps: NextStep[] = [
   {
     id: "pool",
     title: "Uniswap pool on Arc",
-    body: "Provide liquidity to USDC/EURC in the range you pick. The position NFT is yours.",
-    verb: "add it to the USDC/EURC pool",
+    body: `Provide liquidity to ${pools.map((pool) => pool.id).join(", ")} in the range you pick. The position NFT is yours.`,
+    verb: "add it to the",
   },
   {
     id: "lend",
@@ -161,7 +166,8 @@ export function normalizePlan(plan: Plan): Plan {
   const asset = assets[plan.asset] ? plan.asset : "USDC";
   const from = assets[asset].sources.includes(plan.from) ? plan.from : assets[asset].sources[0];
   const hold = holdOptions(asset, from).includes(plan.hold) ? plan.hold : "USDC";
-  return { ...plan, asset, from, hold };
+  const pool = pools.some((p) => p.id === plan.pool) ? plan.pool : pools[0].id;
+  return { ...plan, asset, from, hold, pool };
 }
 
 /// What the funds can be held as on Arc: whatever Circle Swap can swap into there, plus the moved asset
