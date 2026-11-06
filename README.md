@@ -8,6 +8,17 @@ The whole app is one sentence:
 
 Every part of it is a dropdown. "and then" is fixed. The panel on the side lists what can come next and fills the sentence when you pick one.
 
+## Built in Arc Studio
+
+**Bounty:** Best Use of Bridge Kit for Non-USDC Assets, Built in Arc Studio.
+
+**Arc Studio project:** https://studio.arc.io/app/cb20c8eb-57e8-49eb-abda-1c60be57f23f
+
+- **The live settlement contract on Arc was compiled and deployed by Arc Studio.** Studio's workspace has no Chainlink, Uniswap v4 or Permit2 packages, so we flatten `src/AndThenSettlement.sol` into [`studio/AndThenSettlement.flat.sol`](studio/AndThenSettlement.flat.sol) and send it with the Arc Studio CLI. Studio compiles it (0.8.28, viaIR, optimizer 200, cancun) and deploys it on Arc Testnet with our wallet as owner. Steps, prompt and checks: [`studio/README.md`](studio/README.md).
+- **Arc Studio audited every contract.** Report and fixes: [AUDIT.md](AUDIT.md).
+- **Arc Studio also deployed `HookReceiver`**, the receiver we used to prove EURC with hook data lands in an Arc contract (CCTP for non-USDC assets).
+- **Bridge Kit for non-USDC assets:** EURC, WETH and cirBTC are bridged with Circle Bridge Kit and finished on Arc (see "How it works").
+
 ## Main use case: pay links
 
 A merchant requests 25 EURC on Arc and gets a link. The payer opens it, pays from Base, and the merchant receives exactly 25 EURC on Arc, tagged with the invoice id. The invoice on Base only unlocks when a receipt from Arc arrives.
@@ -57,16 +68,34 @@ InvoiceBook                                    emit Settled(id, invoiceId, ...)
 | `src/UniswapV4Swapper.sol` | Exact-in and exact-out swaps straight against the v4 PoolManager |
 | `test/AndThen.t.sol` | Full flow against a real v4 PoolManager with CCTP and CCIP mocks |
 | `script/Deploy.s.sol` | Deploy and wire up on Arc testnet and Base Sepolia |
+| `src/HookReceiver.sol` | Arc. Test receiver for EURC with hook data (`executeWithCrossChainToken`), deployed in Arc Studio |
+| `studio/` | Flattened settlement for Arc Studio, the deploy prompt, and the deploy record |
+| `scripts/router-e2e` | One real payment through the contracts, end to end and timed |
+| `scripts/eurc-hook`, `scripts/ccip-hello`, `scripts/uniswap-swap` | The rail tests: EURC hook, CCIP Arc → Sepolia, v4 swap on Arc |
+| `deployments/`, `ADDRESSES.md`, `broadcast/` | Deployed and external addresses, and the forge deploy logs |
 | `web/` | Next.js app: the sentence, pay links, and the CCTP relayer route |
 
 ## Deployed on testnet
 
-| Contract | Chain | Address |
+| Contract | Chain | Address | Deployed with |
+| - | - | - | - |
+| `AndThenSettlement` | Arc testnet | [`0xae165c6b45d17bb1ffe2a6941a07e07a534c5271`](https://explorer.testnet.arc.io/address/0xae165c6b45d17bb1ffe2a6941a07e07a534c5271) | **Arc Studio** |
+| `HookReceiver` (EURC hook test) | Arc testnet | [`0x86f5d77bDb889Ec3B4550049fCbF79265Ede5012`](https://explorer.testnet.arc.io/address/0x86f5d77bDb889Ec3B4550049fCbF79265Ede5012) | **Arc Studio** |
+| `AndThenRouter` | Ethereum Sepolia | [`0xE903D614De200198Fd03D73BbA1832f523d847a6`](https://sepolia.etherscan.io/address/0xE903D614De200198Fd03D73BbA1832f523d847a6) | `DeploySource` |
+| `InvoiceBook` | Ethereum Sepolia | [`0xd595E25FeEd90b2647E66A82d26B9ad97542eb3A`](https://sepolia.etherscan.io/address/0xd595E25FeEd90b2647E66A82d26B9ad97542eb3A) | `DeploySource` |
+| `AndThenRouter` | Base Sepolia | [`0x6A79d63D85184112FBa127Ca9096e11812309911`](https://sepolia.basescan.org/address/0x6A79d63D85184112FBa127Ca9096e11812309911) | `DeploySource` |
+
+The settlement is set up with the Morpho USDC vault, the USDC/EURC v4 pool and both routers (`setVault`, `setPool`, `setSource`). Every other address we use (CCTP, CCIP, Uniswap v4, tokens) is in [ADDRESSES.md](ADDRESSES.md).
+
+### Proved on testnet
+
+| What | Result | Script |
 | - | - | - |
-| `AndThenSettlement` | Arc testnet | [`0x34549793406BC1f24D6A0cEdb3E228b1834BE5a0`](https://explorer.testnet.arc.io/address/0x34549793406BC1f24D6A0cEdb3E228b1834BE5a0) |
-| `AndThenRouter` | Base Sepolia | [`0x6A79d63D85184112FBa127Ca9096e11812309911`](https://sepolia.basescan.org/address/0x6A79d63D85184112FBa127Ca9096e11812309911) |
-| `InvoiceBook` | Base Sepolia | [`0x4A033067f665477674DAB33594a09ee391C71c15`](https://sepolia.basescan.org/address/0x4A033067f665477674DAB33594a09ee391C71c15) |
-| `AndThenRouter` | Ethereum Sepolia | [`0xA45B547BeC291830feE82D4b8261aF3bDE446f6A`](https://sepolia.etherscan.io/address/0xA45B547BeC291830feE82D4b8261aF3bDE446f6A) |
+| **Full route:** Sepolia `Router.send` → CCTP fast with the intent as hook data → Studio-deployed `Settlement` pays on Arc | **Settled in 36 s**: attested at 31 s, minted and paid in one tx, 0.9 USDC paid, leftover refunded ([send](https://sepolia.etherscan.io/tx/0xbddee2a236a899252ca674fd50684f6720ed0923e4212a0b676d08af467de3a7), [settled](https://testnet.arcscan.app/tx/0x88dd627e41316e730635b37cc784339533afda9a5c7ba4811000b11482f990b0)) | [`scripts/router-e2e/pay-hook.ts`](scripts/router-e2e/pay-hook.ts) |
+| Earlier design, CCIP carrying the intent next to CCTP | settled in 92 s, which is why the intent moved into the hook data | [`scripts/router-e2e/pay.ts`](scripts/router-e2e/pay.ts) |
+| EURC Sepolia → Arc with hook data (CCTP for non-USDC) | landed in `HookReceiver`, hook data decoded | [`scripts/eurc-hook`](scripts/eurc-hook/README.md) |
+| CCIP message Arc → Sepolia, fee in native USDC (the receipt lane) | delivered in 17 s | `scripts/ccip-hello` |
+| Uniswap v4 swap on Arc's USDC/EURC pool | 1 USDC → 0.851 EURC | `scripts/uniswap-swap` |
 
 ## Run it
 
