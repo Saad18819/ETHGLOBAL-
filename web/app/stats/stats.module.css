@@ -1,0 +1,244 @@
+.page {
+  max-width: 1080px;
+  margin: 0 auto;
+  padding: 56px 40px 96px;
+}
+
+.title {
+  margin: 0 0 8px;
+  font-size: 40px;
+  font-weight: 600;
+  letter-spacing: -0.03em;
+}
+
+.muted {
+  margin: 0;
+  color: var(--muted);
+  font-size: 14px;
+}
+
+.tiles {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 12px;
+  margin-top: 32px;
+}
+
+.tile {
+  display: grid;
+  gap: 4px;
+  padding: 18px 20px;
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  background: var(--surface);
+}
+
+.tileValue {
+  font-size: 30px;
+  font-weight: 600;
+  letter-spacing: -0.02em;
+  font-variant-numeric: tabular-nums;
+}
+
+.tileLabel {
+  color: var(--muted);
+  font-size: 13px;
+}
+
+.section {
+  margin-top: 48px;
+}
+
+.heading {
+  margin: 0 0 16px;
+  font-size: 17px;
+  font-weight: 600;
+}
+
+.pair {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 32px;
+}
+
+.chart {
+  margin: 0;
+}
+
+.caption {
+  margin-bottom: 10px;
+  color: var(--muted);
+  font-size: 13px;
+}
+
+.bars {
+  display: grid;
+  gap: 2px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.bar {
+  position: relative;
+  display: grid;
+  grid-template-columns: 150px 1fr 104px;
+  gap: 12px;
+  align-items: center;
+  padding: 7px 0;
+  border-radius: 6px;
+  font-size: 14px;
+  outline: none;
+}
+
+.label {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.tag {
+  padding: 1px 7px;
+  border-radius: 999px;
+  background: var(--pill-bg);
+  color: var(--pill-ink);
+  font-size: 11px;
+}
+
+/* One series per chart, so one hue: the app's violet ink. */
+.track {
+  height: 10px;
+  border-radius: 0 4px 4px 0;
+  background: var(--line);
+}
+
+.fill {
+  display: block;
+  height: 100%;
+  min-width: 2px;
+  border-radius: 0 4px 4px 0;
+  background: var(--violet-ink);
+}
+
+.value {
+  display: flex;
+  justify-content: flex-end;
+  gap: 8px;
+  font-variant-numeric: tabular-nums;
+}
+
+.share {
+  min-width: 34px;
+  color: var(--muted);
+  text-align: right;
+}
+
+.tip {
+  position: absolute;
+  z-index: 5;
+  bottom: calc(100% + 4px);
+  left: 150px;
+  padding: 6px 10px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: var(--surface);
+  box-shadow: 0 8px 24px rgba(23, 22, 27, 0.08);
+  color: var(--ink);
+  font-size: 12px;
+  white-space: nowrap;
+  opacity: 0;
+  pointer-events: none;
+  transition: opacity 120ms ease;
+}
+
+.bar:hover .tip,
+.bar:focus-visible .tip {
+  opacity: 1;
+}
+
+.bar:hover .fill,
+.bar:focus-visible .fill {
+  filter: brightness(1.25);
+}
+
+.tableWrap {
+  overflow-x: auto;
+}
+
+.table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 14px;
+}
+
+.table th {
+  padding: 8px 12px 8px 0;
+  border-bottom: 1px solid var(--line);
+  color: var(--muted);
+  font-weight: 500;
+  text-align: left;
+  white-space: nowrap;
+}
+
+.table td {
+  padding: 10px 12px 10px 0;
+  border-bottom: 1px solid var(--line);
+  white-space: nowrap;
+}
+
+.table a {
+  color: inherit;
+}
+
+.number {
+  text-align: right;
+  font-variant-numeric: tabular-nums;
+}
+
+.table th.number {
+  text-align: right;
+}
+
+.pager {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  margin-top: 14px;
+  color: var(--muted);
+  font-size: 13px;
+}
+
+.pager button {
+  padding: 6px 12px;
+  border: 1px solid var(--line);
+  border-radius: 999px;
+  background: var(--surface);
+  font-size: 13px;
+}
+
+.pager button:disabled {
+  color: var(--faint);
+}
+
+@media (max-width: 760px) {
+  .page {
+    padding: 32px 16px 64px;
+  }
+
+  .tiles,
+  .pair {
+    grid-template-columns: 1fr;
+  }
+
+  .bar {
+    grid-template-columns: 110px 1fr 96px;
+  }
+
+  .tip {
+    left: 0;
+  }
+}

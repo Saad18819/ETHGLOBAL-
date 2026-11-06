@@ -85,3 +85,23 @@ export function describe(plan: Plan): string {
 }
 
 export const purposeTitle = (purpose: Entry["purpose"]) => (purpose === "back" ? "Bridge back" : stepOf(purpose).title);
+
+/// Shares a finished move with the app's stats. The server keeps it only after finding the transaction on
+/// chain, sent by this wallet; failing to share never affects the move itself.
+export function publish(intent: {
+  tx?: string;
+  account: Address;
+  purpose: Entry["purpose"];
+  summary: string;
+  chain: SourceId | "arc";
+  asset: string;
+  amount: string;
+  status: "done" | "sent" | "stuck";
+}) {
+  if (!intent.tx) return;
+  void fetch("/api/intents", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(intent),
+  }).catch(() => undefined);
+}
