@@ -10,8 +10,10 @@ scripts/eurc-hook/hook.ts ──calls──▶ Arc Testnet ◀──deployed by�
                                      HookReceiver (address in deployments/arc-testnet.json)
 ```
 
-- `src/HookReceiver.sol` is the master copy. Paste exactly this file into Arc Studio to deploy.
-- After each deploy, put the new address in `deployments/arc-testnet.json` and in `.env` as `RECEIVER`.
+- The contract is built, compiled and deployed in **Arc Studio** (the master copy).
+  `src/HookReceiver.sol` is a copy of the Studio version, kept here for reference.
+- After each Studio deploy: copy the final code into `src/HookReceiver.sol`, put the new address
+  in `deployments/arc-testnet.json`, and in `.env` as `RECEIVER`.
 
 ## Settings used
 
