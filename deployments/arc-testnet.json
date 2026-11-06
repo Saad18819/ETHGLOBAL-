@@ -1,13 +1,13 @@
 {
   "chainId": 5042002,
   "network": "Arc Testnet",
+  "studioProject": "https://studio.arc.io/app/cb20c8eb-57e8-49eb-abda-1c60be57f23f",
   "contracts": {
     "HookReceiver": {
-      "address": "",
+      "address": "0x86f5d77bDb889Ec3B4550049fCbF79265Ede5012",
       "source": "src/HookReceiver.sol",
       "deployedWith": "Arc Studio",
-      "owner": "",
-      "note": "Fill in after deploying the current src/HookReceiver.sol in Arc Studio (constructor _owner = your wallet)."
+      "owner": "0xb96E328690d79671328fEE9236264f4e406c186a"
     },
     "HookReceiver_v1": {
       "address": "0x9a47b43a3e3965b01e7fe4f01dd74cc985c7add6",
