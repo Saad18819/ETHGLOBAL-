@@ -3,13 +3,13 @@
 import styles from "./Journey.module.css";
 import { protocolOf, protocols, swatchStyle, type Swatch } from "@/lib/brand";
 import { sources } from "@/lib/chains";
-import { bridgedAsset, stepOf, swapsAtDestination, viaUniswap, wrapsIntoWeth, type Plan } from "@/lib/plan";
+import { bridgedAsset, routeOf, stepOf, swapsAtDestination, viaUniswap, wrapsIntoWeth, type Plan } from "@/lib/plan";
 
-export type Phase = "source" | "bridge" | "arc" | "action" | "done";
+export type Phase = "source" | "bridge" | "arc" | "action" | "receipt" | "done";
 
 type Stage = { id: Phase; title: string; detail: string; swatch: Swatch };
 
-const order: Phase[] = ["source", "bridge", "arc", "action", "done"];
+const order: Phase[] = ["source", "bridge", "arc", "action", "receipt", "done"];
 
 /// The later of two phases, so progress never steps back.
 export const later = (a: Phase, b: Phase) => (order.indexOf(b) > order.indexOf(a) ? b : a);
@@ -27,7 +27,18 @@ export function phaseOf(status: string): Phase {
 }
 
 /// The route a move takes, one stage per hop, lit up as the flow reaches it.
-export function Journey({ plan, phase, failed }: { plan: Plan; phase: Phase; failed?: boolean }) {
+export function Journey({
+  plan,
+  phase,
+  failed,
+  receipt,
+}: {
+  plan: Plan;
+  phase: Phase;
+  failed?: boolean;
+  /// A pay link: the receipt goes back to the invoice on Base as the last stage.
+  receipt?: boolean;
+}) {
   const from = sources[plan.from].label;
   const moved = bridgedAsset(plan);
   const action = protocols[protocolOf[plan.next]];
@@ -48,13 +59,21 @@ export function Journey({ plan, phase, failed }: { plan: Plan; phase: Phase; fai
         ? { id: "source", title: from, detail: "ETH wrapped to WETH", swatch: protocols.arc }
         : { id: "source", title: from, detail: `${plan.amount} ${plan.asset}`, swatch: protocols.arc },
     { id: "bridge", title: "Circle CCTP", detail: `${moved} to ${dest}`, swatch: protocols.arc },
-    ...(arcSwap ? [{ id: "arc" as const, title: "Arc", detail: "Circle Swap", swatch: protocols.arc }] : []),
+    ...(arcSwap
+      ? [
+          // Our settlement contract swaps on the Uniswap pool; from the wallet it is Circle Swap.
+          routeOf(plan) === "router"
+            ? { id: "arc" as const, title: "Uniswap on Arc", detail: "USDC to EURC", swatch: protocols.uniswap }
+            : { id: "arc" as const, title: "Arc", detail: "Circle Swap", swatch: protocols.arc },
+        ]
+      : []),
     ...(swapsAtDestination(plan)
       ? [{ id: "arc" as const, title: `Uniswap on ${dest}`, detail: `USDC to ${plan.hold}`, swatch: protocols.uniswap }]
       : []),
     plan.to === "arc"
       ? { id: "action", title: action.name, detail: stepOf(plan.next).title, swatch: action }
       : { id: "action", title: dest, detail: plan.next === "pay" ? "Paid" : "In your wallet", swatch: action },
+    ...(receipt ? [{ id: "receipt" as const, title: "Base", detail: "Invoice paid over CCIP", swatch: protocols.arc }] : []),
   ];
   const reached = order.indexOf(phase);
 
