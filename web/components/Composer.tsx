@@ -21,8 +21,19 @@ import { holdingOf, short, spendable, useBalances } from "@/lib/balances";
 import { describe, publish, record } from "@/lib/history";
 import { protocolOf, protocols, swatchStyle } from "@/lib/brand";
 import { useMarkets } from "@/lib/markets";
-import { assets, bridgedAsset, defaultPlan, wrapsIntoWeth, normalizePlan, routeOf, viaUniswap, type NextId, type Plan } from "@/lib/plan";
-import { quoteToUsdc, swapToUsdc } from "@/lib/uniswap";
+import {
+  assets,
+  bridgedAsset,
+  defaultPlan,
+  normalizePlan,
+  routeOf,
+  swapsAtDestination,
+  viaUniswap,
+  wrapsIntoWeth,
+  type NextId,
+  type Plan,
+} from "@/lib/plan";
+import { quoteToUsdc, quoteUsdcInto, swapToUsdc } from "@/lib/uniswap";
 import { marketSqrtPriceX96, poolById, usePoolState, type PoolState } from "@/lib/pools";
 import { usePool } from "@/lib/quote";
 
@@ -170,6 +181,16 @@ export function Composer({
       ? { ...sized, payAmount: String(Math.floor(maxPay * 100) / 100) }
       : sized;
   const leftover = maxPay - (Number(plan.payAmount) || 0);
+  // A hold elsewhere in another token: what the arriving USDC buys there with Uniswap.
+  const swapThere = swapsAtDestination(plan);
+  const arrivingUsdc = Number.isFinite(arrivingUsd) && arrivingUsd > 0 ? parseUnits(arrivingUsd.toFixed(6), 6) : 0n;
+  const destinationQuote = useQuery({
+    queryKey: ["destination-quote", plan.hold, plan.to, arrivingUsdc.toString(), plan.slippage],
+    queryFn: () => quoteUsdcInto(plan.hold, plan.to, arrivingUsdc, Number(plan.slippage), address),
+    enabled: swapThere && arrivingUsdc > 0n,
+    staleTime: 30_000,
+    retry: false,
+  });
   // Until the source swap is quoted, there is nothing to measure the payment against.
   const quoting = uniswap && !sourceQuote.data && !sourceQuote.error;
   // More than the wallet holds can never go through, whatever the token.
@@ -180,8 +201,10 @@ export function Composer({
       : undefined;
   const blocker = overBalance
     ? overBalance
-    : quoting
+    : quoting || (swapThere && !destinationQuote.data && !destinationQuote.error)
     ? "Getting a Uniswap quote"
+    : swapThere && destinationQuote.error
+      ? `No Uniswap quote from USDC to ${plan.hold} on ${sources[plan.to].label}: ${destinationQuote.error.message}`
     : uniswap && sourceQuote.error
       ? `No Uniswap quote from ${plan.asset} to USDC on ${sources[plan.from].label}: ${sourceQuote.error.message}`
       : findBlocker(plan, route, amount, pool.data?.rate, slippage, maxPay);
@@ -341,6 +364,7 @@ export function Composer({
           leftover={plan.next === "pay" && !quoting && Number.isFinite(leftover) && leftover > 0 ? leftover : undefined}
           fees={fees.data}
           sourceQuote={uniswap ? sourceQuote.data : undefined}
+          destinationQuote={swapThere ? destinationQuote.data : undefined}
         />
 
         <div className={styles.actions}>

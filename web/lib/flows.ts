@@ -29,7 +29,8 @@ import { sources, type SourceId } from "./chains";
 import { config, type ChainId } from "./config";
 import { isTestnet } from "./network";
 import { arc, erc20Abi, memoAbi, routerAbi } from "./contracts";
-import { assets, type AssetId, type Plan } from "./plan";
+import { assets, swapsAtDestination, type AssetId, type Plan } from "./plan";
+import { swapUsdcInto } from "./uniswap";
 import { tokenBySymbol } from "./tokens";
 import { MAX_ROUNDS, ROUND_SHARE } from "./loop";
 import { orderKey } from "./order";
@@ -475,7 +476,9 @@ export async function sendElsewhere(
   const { plan, account, recipient } = context;
   const from = sources[plan.from];
   const to = sources[plan.to];
-  const token = plan.next === "pay" ? plan.payToken : plan.hold;
+  // A hold in a token that does not arrive as is: USDC arrives, then Uniswap there swaps it.
+  const swapAfter = swapsAtDestination(plan);
+  const token = swapAfter ? "USDC" : plan.next === "pay" ? plan.payToken : plan.hold;
   const provider = (window as { ethereum?: unknown }).ethereum;
   if (!provider) throw new Error("No browser wallet found");
   const [{ AppKit }, { createViemAdapterFromProvider }] = await Promise.all([
@@ -487,10 +490,13 @@ export async function sendElsewhere(
 
   // Circle's chain definitions list the forwarder on every destination here except Ethereum mainnet.
   const forwarded = token === "USDC" && (isTestnet || plan.to !== "ethereum");
-  if (!forwarded) {
+  // The wallet itself signs on the destination when it mints there or swaps there; check before burning.
+  if (!forwarded || swapAfter) {
     const gas = await getBalance(config, { address: account, chainId: to.chain.id as ChainId });
     if (gas.value === 0n) {
-      throw new Error(`Your wallet needs a little ${to.chain.nativeCurrency.symbol} on ${to.label} for gas to receive ${token}`);
+      throw new Error(
+        `Your wallet needs a little ${to.chain.nativeCurrency.symbol} on ${to.label} for gas to ${swapAfter ? `swap into ${plan.hold}` : `receive ${token}`}`,
+      );
     }
   }
 
@@ -504,6 +510,9 @@ export async function sendElsewhere(
     }
     amount = String(gross);
   }
+
+  const usdcThere = tokenBySymbol.USDC.sources[plan.to] as Address;
+  const usdcBefore = swapAfter ? await usdcBalanceOn(plan.to, usdcThere, account) : 0n;
 
   await switchChain(config, { chainId: from.chain.id as ChainId });
   onStep(`Bridging ${amount} ${token} from ${from.label} to ${to.label}`);
@@ -519,11 +528,31 @@ export async function sendElsewhere(
     bridged = await kit.retryBridge(bridged, { from: adapter, to: adapter });
   }
   if (bridged.state === "error") throw new Error(`Bridge Kit could not finish the transfer to ${to.label}`);
-  return {
-    steps: bridged.steps.map((step) => ({
-      name: step.name,
-      explorerUrl: "explorerUrl" in step ? (step.explorerUrl as string) : undefined,
-    })),
-    sourceTx: burnOf(bridged.steps),
-  };
+  const steps: Step[] = bridged.steps.map((step) => ({
+    name: step.name,
+    explorerUrl: "explorerUrl" in step ? (step.explorerUrl as string) : undefined,
+  }));
+
+  if (swapAfter) {
+    // Swap exactly what arrived, after the bridge's fees.
+    const arrived = (await usdcBalanceOn(plan.to, usdcThere, account)) - usdcBefore;
+    if (arrived <= 0n) throw new Error(`The USDC has not reached ${to.label} yet; it is on its way to your wallet there`);
+    const { received, hash } = await swapUsdcInto(
+      { account, asset: plan.hold, chain: plan.to, usdcIn: arrived, slippage: Number(plan.slippage) },
+      // Named for the chain, so progress shows it at the destination rather than the source.
+      (label) => onStep(`On ${to.label}: ${label.charAt(0).toLowerCase()}${label.slice(1)}`),
+    );
+    const decimals = tokenBySymbol[plan.hold].decimals;
+    steps.push({ name: `Swapped into ${formatUnits(received, decimals)} ${plan.hold}`, explorerUrl: `${to.explorer}/tx/${hash}` });
+  }
+  return { steps, sourceTx: burnOf(bridged.steps) };
 }
+
+const usdcBalanceOn = (chain: SourceId, usdc: Address, account: Address) =>
+  readContract(config, {
+    chainId: sources[chain].chain.id as ChainId,
+    address: usdc,
+    abi: erc20Abi,
+    functionName: "balanceOf",
+    args: [account],
+  });

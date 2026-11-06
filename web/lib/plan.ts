@@ -1,6 +1,6 @@
 import { offArc, sourceIds, sources, type SourceId } from "./chains";
 import { MAX_LEVERAGE } from "./loop";
-import { pools } from "./pairs";
+import { destinationHolds, pools } from "./pairs";
 import { arcSwappable, tokenBySymbol, tokens, type Token } from "./tokens";
 
 export type { SourceId } from "./chains";
@@ -105,6 +105,10 @@ export function payOptions(plan: Pick<Plan, "asset" | "from" | "to">, viaContrac
   if (plan.to !== "arc") return offArcTokens(plan.asset, plan.from, plan.to);
   return viaContracts ? ["USDC", "EURC"] : ["USDC", "EURC", "cirBTC"];
 }
+
+/// A hold elsewhere in a token that does not arrive as is: USDC arrives and Uniswap there swaps it.
+export const swapsAtDestination = (plan: Pick<Plan, "asset" | "from" | "to" | "next" | "hold">) =>
+  plan.to !== "arc" && plan.next === "hold" && !offArcTokens(plan.asset, plan.from, plan.to).includes(plan.hold);
 
 /// Where a move can end: any chain but the one it starts on, and only Arc unless it pays or holds.
 export function destinations(plan: Pick<Plan, "from" | "next">): SourceId[] {
@@ -215,7 +219,7 @@ export function normalizePlan(plan: Plan): Plan {
 /// What the funds can be held as on Arc: whatever Circle Swap can swap into there, plus the moved asset
 /// itself when Circle bridges it natively. Elsewhere, what arrives there as is.
 export function holdOptions(asset: AssetId, from: SourceId, to: SourceId = "arc"): HoldToken[] {
-  if (to !== "arc") return offArcTokens(asset, from, to);
+  if (to !== "arc") return [...new Set([...offArcTokens(asset, from, to), ...destinationHolds(to)])];
   const own = bridgesNatively(asset, from) && !arcSwappable.includes(asset) ? [asset] : [];
   if (wrapsIntoWeth(asset, from) && !arcSwappable.includes("WETH")) own.push("WETH");
   return [...arcSwappable, ...own];

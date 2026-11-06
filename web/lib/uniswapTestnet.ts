@@ -1,5 +1,5 @@
 import { encodeAbiParameters, encodePacked, maxUint256, parseAbi, zeroAddress, type Address, type Hex } from "viem";
-import { readContract, waitForTransactionReceipt, writeContract } from "wagmi/actions";
+import { getBalance, readContract, waitForTransactionReceipt, writeContract } from "wagmi/actions";
 import { baseSepolia, sepolia, unichainSepolia } from "wagmi/chains";
 
 import type { SourceId } from "./chains";
@@ -173,8 +173,32 @@ export async function swapTestnet(
   const minOut = (quote.amountOut * BigInt(Math.floor((1 - slippage) * 10_000))) / 10_000n;
   const { key, zeroForOne } = poolKey(tokenIn.address, chain.usdc, quote);
 
-  // V4_SWAP with SWAP_EXACT_IN_SINGLE, SETTLE_ALL and TAKE_ALL (v4-periphery Actions). minHopPriceX36 is 0;
-  // TAKE_ALL enforces the minimum out.
+  const v4Swap = encodeSwap(key, zeroForOne, amountIn, minOut, tokenIn.address, chain.usdc);
+
+  const before = await usdcBalance(chain, account);
+  onStep("Swapping on Uniswap");
+  const hash = await writeContract(config, {
+    chainId: chain.chainId,
+    address: chain.universalRouter,
+    abi: routerAbi,
+    functionName: "execute",
+    args: ["0x10", [v4Swap], BigInt(Math.floor(Date.now() / 1000) + 600)],
+    value: native ? amountIn : 0n,
+  });
+  await waitForTransactionReceipt(config, { chainId: chain.chainId, hash });
+  return { usdc: (await usdcBalance(chain, account)) - before, hash };
+}
+
+/// One V4_SWAP: SWAP_EXACT_IN_SINGLE, SETTLE_ALL of what goes in and TAKE_ALL of what comes out
+/// (v4-periphery Actions). minHopPriceX36 is 0; TAKE_ALL enforces the minimum out.
+function encodeSwap(
+  key: ReturnType<typeof poolKey>["key"],
+  zeroForOne: boolean,
+  amountIn: bigint,
+  minOut: bigint,
+  paid: Address,
+  taken: Address,
+): Hex {
   const swap = encodeAbiParameters(
     [
       {
@@ -191,12 +215,71 @@ export async function swapTestnet(
     ],
     [{ poolKey: key, zeroForOne, amountIn, amountOutMinimum: minOut, minHopPriceX36: 0n, hookData: "0x" }],
   );
-  const settle = encodeAbiParameters([{ type: "address" }, { type: "uint256" }], [tokenIn.address, amountIn]);
-  const take = encodeAbiParameters([{ type: "address" }, { type: "uint256" }], [chain.usdc, minOut]);
+  const settle = encodeAbiParameters([{ type: "address" }, { type: "uint256" }], [paid, amountIn]);
+  const take = encodeAbiParameters([{ type: "address" }, { type: "uint256" }], [taken, minOut]);
   const actions = encodePacked(["uint8", "uint8", "uint8"], [0x06, 0x0c, 0x0f]);
-  const v4Swap = encodeAbiParameters([{ type: "bytes" }, { type: "bytes[]" }], [actions, [swap, settle, take]]);
+  return encodeAbiParameters([{ type: "bytes" }, { type: "bytes[]" }], [actions, [swap, settle, take]]);
+}
 
-  const before = await usdcBalance(chain, account);
+/// Best amount of `tokenOut` for `usdcIn` USDC across the token/USDC fee tiers: the other direction, for
+/// turning what arrived on a chain into the token held there.
+export async function quoteFromUsdc(chainId: SourceId, tokenOut: TokenIn, usdcIn: bigint): Promise<TestnetQuote | undefined> {
+  if (usdcIn === 0n) return undefined;
+  const chain = deploymentOf(chainId);
+  const quotes = await Promise.all(
+    TIERS.map(async (tier): Promise<TestnetQuote | undefined> => {
+      try {
+        const { key, zeroForOne } = poolKey(tokenOut.address, chain.usdc, tier);
+        const [amountOut] = await readContract(config, {
+          chainId: chain.chainId,
+          address: chain.quoter,
+          abi: quoterAbi,
+          functionName: "quoteExactInputSingle",
+          args: [{ poolKey: key, zeroForOne: !zeroForOne, exactAmount: usdcIn, hookData: "0x" }],
+        });
+        const impliedPrice = Number(usdcIn) / 1e6 / (Number(amountOut) / 10 ** tokenOut.decimals);
+        return { amountOut, fee: tier.fee, tickSpacing: tier.tickSpacing, impliedPrice };
+      } catch {
+        return undefined;
+      }
+    }),
+  );
+  return quotes
+    .filter((quote): quote is TestnetQuote => quote !== undefined)
+    .sort((a, b) => (b.amountOut > a.amountOut ? 1 : -1))[0];
+}
+
+/// Swaps USDC into a token on a chain, paying the USDC through Permit2. Returns what arrived.
+export async function swapFromUsdc(
+  { chain: chainId, account, tokenOut, usdcIn, quote, slippage }: {
+    chain: SourceId;
+    account: Address;
+    tokenOut: TokenIn;
+    usdcIn: bigint;
+    quote: TestnetQuote;
+    slippage: number;
+  },
+  onStep: (label: string) => void,
+): Promise<{ received: bigint; hash: Hex }> {
+  const chain = deploymentOf(chainId);
+  onStep("Approving USDC for Uniswap");
+  await approveThroughPermit2(chain, account, chain.usdc, usdcIn);
+
+  const minOut = (quote.amountOut * BigInt(Math.floor((1 - slippage) * 10_000))) / 10_000n;
+  const { key, zeroForOne } = poolKey(tokenOut.address, chain.usdc, quote);
+  const v4Swap = encodeSwap(key, !zeroForOne, usdcIn, minOut, chain.usdc, tokenOut.address);
+
+  const balanceOf = () =>
+    tokenOut.address === zeroAddress
+      ? getBalance(config, { chainId: chain.chainId, address: account }).then((b) => b.value)
+      : readContract(config, {
+          chainId: chain.chainId,
+          address: tokenOut.address,
+          abi: erc20Abi,
+          functionName: "balanceOf",
+          args: [account],
+        });
+  const before = await balanceOf();
   onStep("Swapping on Uniswap");
   const hash = await writeContract(config, {
     chainId: chain.chainId,
@@ -204,10 +287,11 @@ export async function swapTestnet(
     abi: routerAbi,
     functionName: "execute",
     args: ["0x10", [v4Swap], BigInt(Math.floor(Date.now() / 1000) + 600)],
-    value: native ? amountIn : 0n,
   });
-  await waitForTransactionReceipt(config, { chainId: chain.chainId, hash });
-  return { usdc: (await usdcBalance(chain, account)) - before, hash };
+  const receipt = await waitForTransactionReceipt(config, { chainId: chain.chainId, hash });
+  if (receipt.status !== "success") throw new Error("The Uniswap swap reverted");
+  // Native ETH comes out net of the swap's own gas, so the balance change undercounts it slightly.
+  return { received: (await balanceOf()) - before, hash };
 }
 
 /// The UniversalRouter pulls ERC20s through Permit2: the token approves Permit2 once, then Permit2 lets the

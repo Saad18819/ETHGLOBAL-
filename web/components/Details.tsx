@@ -10,7 +10,7 @@ import { feeApr, percent, usd, type Markets } from "@/lib/markets";
 import { isTestnet } from "@/lib/network";
 import type { PoolState } from "@/lib/pools";
 import { liquidationDrop, loopRounds, MAX_LEVERAGE } from "@/lib/loop";
-import { bridgedAsset, ranges, routeOf, type Plan } from "@/lib/plan";
+import { assets, bridgedAsset, ranges, routeOf, type Plan } from "@/lib/plan";
 
 export type PoolStats = { rate: number; usdcDepth: number; eurcDepth: number };
 
@@ -46,6 +46,7 @@ export function Details({
   pool,
   fees,
   sourceQuote,
+  destinationQuote,
   chosenPool,
   leftover,
 }: {
@@ -57,6 +58,8 @@ export function Details({
   leftover?: number;
   fees?: CctpFees;
   sourceQuote?: SourceQuote;
+  /// For a hold elsewhere in another token: what the arriving USDC buys there.
+  destinationQuote?: SourceQuote;
 }) {
   // After a Uniswap source swap, everything downstream works with the USDC it produced.
   const usdcOut = sourceQuote ? Number(sourceQuote.amountOut) / 1e6 : undefined;
@@ -107,7 +110,7 @@ export function Details({
       }
       break;
     case "hold":
-      rows.push(...holdRows(plan, amount * price, markets, pool));
+      rows.push(...holdRows(plan, amount * price, markets, pool, destinationQuote));
       break;
     case "pool":
       rows.push(...(plan.pool === "USDC/EURC" ? poolRows(plan, valueUsd, pool, markets) : pairRows(plan, valueUsd, chosenPool, markets)));
@@ -163,7 +166,22 @@ function payRows(plan: Plan, pool?: PoolStats): Row[] {
   ];
 }
 
-function holdRows(plan: Plan, valueUsd: number, markets?: Markets, pool?: PoolStats): Row[] {
+function holdRows(
+  plan: Plan,
+  valueUsd: number,
+  markets?: Markets,
+  pool?: PoolStats,
+  destinationQuote?: SourceQuote,
+): Row[] {
+  if (plan.to !== "arc" && destinationQuote) {
+    const decimals = assets[plan.hold]?.decimals ?? 18;
+    const got = Number(destinationQuote.amountOut) / 10 ** decimals;
+    return [
+      ["Swaps through", `Uniswap on ${sources[plan.to].label}, after the USDC arrives`],
+      ["You get about", `${Number(got.toPrecision(4))} ${plan.hold} in your wallet on ${sources[plan.to].label}`],
+      ["Max slippage", `${plan.slippage}%`],
+    ];
+  }
   if (plan.hold === bridgedAsset(plan)) {
     return [["Lands as", `${plan.hold} in your wallet on ${sources[plan.to].label}, no swap`]];
   }

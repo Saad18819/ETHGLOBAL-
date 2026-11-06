@@ -3,7 +3,7 @@
 import styles from "./Journey.module.css";
 import { protocolOf, protocols, swatchStyle, type Swatch } from "@/lib/brand";
 import { sources } from "@/lib/chains";
-import { bridgedAsset, stepOf, viaUniswap, wrapsIntoWeth, type Plan } from "@/lib/plan";
+import { bridgedAsset, stepOf, swapsAtDestination, viaUniswap, wrapsIntoWeth, type Plan } from "@/lib/plan";
 
 export type Phase = "source" | "bridge" | "arc" | "action" | "done";
 
@@ -16,6 +16,8 @@ export const later = (a: Phase, b: Phase) => (order.indexOf(b) > order.indexOf(a
 
 /// Which stage a status line from the flows belongs to.
 export function phaseOf(status: string): Phase {
+  // Work at the destination after the bridge, such as a swap there, reads "On Base: …".
+  if (/^On [A-Z][\w ]*: /.test(status)) return "arc";
   if (/Circle Swap|Round \d/.test(status)) return /Round \d/.test(status) ? "action" : "arc";
   if (/Bridging|Retrying the mint|Approve USDC|Confirm in your wallet|Waiting for|Switching to/.test(status)) return "bridge";
   if (/Wrapping|Unwrapping|Uniswap|Permit2|Quoting|Approving the token/.test(status) && !/liquidity|pool tokens/.test(status)) {
@@ -47,6 +49,9 @@ export function Journey({ plan, phase, failed }: { plan: Plan; phase: Phase; fai
         : { id: "source", title: from, detail: `${plan.amount} ${plan.asset}`, swatch: protocols.arc },
     { id: "bridge", title: "Circle CCTP", detail: `${moved} to ${dest}`, swatch: protocols.arc },
     ...(arcSwap ? [{ id: "arc" as const, title: "Arc", detail: "Circle Swap", swatch: protocols.arc }] : []),
+    ...(swapsAtDestination(plan)
+      ? [{ id: "arc" as const, title: `Uniswap on ${dest}`, detail: `USDC to ${plan.hold}`, swatch: protocols.uniswap }]
+      : []),
     plan.to === "arc"
       ? { id: "action", title: action.name, detail: stepOf(plan.next).title, swatch: action }
       : { id: "action", title: dest, detail: plan.next === "pay" ? "Paid" : "In your wallet", swatch: action },
