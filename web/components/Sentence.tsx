@@ -8,6 +8,7 @@ import { holdingOf, short, spendable, type Holding } from "@/lib/balances";
 import { shortAddress } from "@/lib/format";
 import { pools } from "@/lib/pools";
 import { protocolOf, protocols, tokenColor } from "@/lib/brand";
+import { chainIcon, protocolIcon, tokenIcon } from "@/lib/icons";
 import { percent, usd, type Vault } from "@/lib/markets";
 import {
   assets,
@@ -83,6 +84,7 @@ export function Sentence({
         options={(Object.keys(assets) as AssetId[]).map((id) => ({
           value: id,
           label: id,
+          icon: tokenIcon(id),
           hint: totalOf(id) > 0 ? short(String(totalOf(id))) : undefined,
         }))}
         onChange={(asset) =>
@@ -96,7 +98,12 @@ export function Sentence({
         value={plan.from}
         options={assets[plan.asset].sources.map((id) => {
           const holding = holdingOf(holdings, plan.asset, id);
-          return { value: id, label: sources[id].label, hint: holding ? `${short(holding.amount)} ${plan.asset}` : undefined };
+          return {
+            value: id,
+            label: sources[id].label,
+            icon: chainIcon(id),
+            hint: holding ? `${short(holding.amount)} ${plan.asset}` : undefined,
+          };
         })}
         onChange={(from) => set({ from })}
       />{" "}
@@ -108,7 +115,7 @@ export function Sentence({
           label="To"
           tone="stone"
           value={plan.to}
-          options={destinations(plan).map((id) => ({ value: id, label: sources[id].label }))}
+          options={destinations(plan).map((id) => ({ value: id, label: sources[id].label, icon: chainIcon(id) }))}
           onChange={(to) => set({ to })}
         />
       )}
@@ -120,7 +127,11 @@ export function Sentence({
           label="And then"
           swatch={brand}
           value={plan.next}
-          options={nextSteps.map((step) => ({ value: step.id, label: step.verb.replace(/ (as|on|to|to the)$/, "") }))}
+          options={nextSteps.map((step) => ({
+            value: step.id,
+            label: step.verb.replace(/ (as|on|to|to the)$/, ""),
+            icon: protocolIcon[protocolOf[step.id]],
+          }))}
           onChange={(next) => set({ next })}
         >
           {stepOf(plan.next).verb}
@@ -136,6 +147,7 @@ export function Sentence({
             options={holdOptions(plan.asset, plan.from, plan.to).map((token) => ({
               value: token,
               label: token,
+              icon: tokenIcon(token),
               hint: token === bridgedAsset(plan) ? "no swap" : undefined,
             }))}
             onChange={(hold) => set({ hold })}
@@ -244,7 +256,7 @@ export function Sentence({
                 label="Pay in"
                 swatch={tokenColor(plan.payToken)}
                 value={plan.payToken}
-                options={payOptions(plan, viaRouter).map((token) => ({ value: token, label: token }))}
+                options={payOptions(plan, viaRouter).map((token) => ({ value: token, label: token, icon: tokenIcon(token) }))}
                 onChange={(payToken) => set({ payToken })}
               />
             </>
