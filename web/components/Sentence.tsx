@@ -70,6 +70,7 @@ export function Sentence({
             : undefined
         }
         swatch={token}
+        maxChars={10}
       />{" "}
       <Select<AssetId>
         label="Asset"
@@ -167,12 +168,9 @@ export function Sentence({
               hint: `${percent(vault.apy)} APY, ${usd(vault.liquidity)} liquidity`,
             }))}
             onChange={(vault) => set({ vault })}
-          >
-            {(() => {
-              const vault = vaults.find((v) => v.address === plan.vault) ?? vaults[0];
-              return `${vault.name} at ${percent(vault.apy)}`;
-            })()}
-          </Select>
+          />{" "}
+          {/* Only the vault is a choice; its rate reads as plain text, like the pool's. */}
+          at {percent((vaults.find((v) => v.address === plan.vault) ?? vaults[0]).apy)} APY
         </>
       )}
       {plan.next === "loop" && (
@@ -206,6 +204,8 @@ export function Sentence({
               placeholder="name.eth"
               value={plan.recipient}
               onChange={(recipient) => set({ recipient })}
+              display={shortAddress}
+              maxChars={18}
             />
           )}{" "}
           {locked ? (
@@ -220,6 +220,7 @@ export function Sentence({
                 value={plan.payAmount}
                 onChange={(payAmount) => set({ payAmount })}
                 swatch={tokenColor(plan.payToken)}
+                maxChars={10}
               />{" "}
               <Select<PayToken>
                 label="Pay in"

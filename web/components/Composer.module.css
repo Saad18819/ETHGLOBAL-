@@ -56,6 +56,11 @@
   background: var(--faint);
 }
 
+.success {
+  font-size: 14px;
+  color: var(--green-ink);
+}
+
 .status {
   font-size: 14px;
   color: var(--muted);

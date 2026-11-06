@@ -71,11 +71,14 @@ export function useHistory(account: Address | undefined): Entry[] {
   );
 }
 
+const shortAddress = (value: string) =>
+  /^0x[0-9a-fA-F]{40}$/.test(value) ? `${value.slice(0, 6)}…${value.slice(-4)}` : value;
+
 /// The sentence for a move, in the past tense.
 export function describe(plan: Plan): string {
   const moved = `Moved ${plan.amount} ${plan.asset} from ${sources[plan.from].label}`;
   const purpose: Record<NextId, string> = {
-    pay: `paid ${plan.recipient || "someone"} ${plan.payAmount} ${plan.payToken}`,
+    pay: `paid ${shortAddress(plan.recipient) || "someone"} ${plan.payAmount} ${plan.payToken}`,
     hold: `held it on Arc as ${plan.hold}`,
     pool: `added it to the ${plan.pool} pool on Uniswap`,
     lend: "lent it on Morpho",
