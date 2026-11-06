@@ -20,7 +20,6 @@ export function Header() {
       <nav className={styles.nav}>
         <Link href="/">Move</Link>
         <Link href="/invoice">Request a payment</Link>
-        <Link href="/history">History</Link>
         <Link href="/finish">Finish a transfer</Link>
       </nav>
       {isTestnet && (

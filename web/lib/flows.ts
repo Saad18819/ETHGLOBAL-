@@ -28,6 +28,7 @@ import { mainnet } from "wagmi/chains";
 
 import { sources, type SourceId } from "./chains";
 import { config, type ChainId } from "./config";
+import { isTestnet } from "./network";
 import { arc, erc20Abi, memoAbi, routerAbi } from "./contracts";
 import { assets, type AssetId, type Plan } from "./plan";
 import { tokenBySymbol } from "./tokens";
@@ -474,4 +475,43 @@ async function loop(
   }
 
   return steps;
+}
+
+/// Sends USDC or EURC from Arc back to a source chain with Bridge Kit. USDC uses Circle's forwarder, so
+/// the destination needs no gas; EURC is minted by the wallet there.
+export async function bridgeBack(
+  { token, amount, to }: { token: "USDC" | "EURC"; amount: string; to: SourceId },
+  onStep: (label: string) => void,
+): Promise<{ steps: Step[] }> {
+  const provider = (window as { ethereum?: unknown }).ethereum;
+  if (!provider) throw new Error("No browser wallet found");
+  const [{ AppKit }, { createViemAdapterFromProvider }] = await Promise.all([
+    import("@circle-fin/app-kit"),
+    import("@circle-fin/adapter-viem-v2"),
+  ]);
+  const adapter = await createViemAdapterFromProvider({ provider: provider as never });
+  const kit = new AppKit();
+  // Circle's chain definitions list the forwarder on every destination here except Ethereum mainnet.
+  const forwarded = token === "USDC" && (isTestnet || to !== "ethereum");
+
+  await switchChain(config, { chainId: arc.chainId });
+  onStep(`Bridging ${amount} ${token} from Arc to ${sources[to].label}`);
+  let bridged = await kit.bridge({
+    from: { adapter, chain: arc.kitChain as never },
+    to: { adapter, chain: sources[to].kitChain as never, useForwarder: forwarded },
+    amount,
+    token: token as never,
+    config: { transferSpeed: "FAST" },
+  });
+  if (bridged.state === "error") {
+    onStep(`Retrying the mint on ${sources[to].label}`);
+    bridged = await kit.retryBridge(bridged, { from: adapter, to: adapter });
+  }
+  if (bridged.state === "error") throw new Error(`Bridge Kit could not finish the transfer to ${sources[to].label}`);
+  return {
+    steps: bridged.steps.map((step) => ({
+      name: step.name,
+      explorerUrl: "explorerUrl" in step ? (step.explorerUrl as string) : undefined,
+    })),
+  };
 }

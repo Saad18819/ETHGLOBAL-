@@ -1,0 +1,66 @@
+.page {
+  max-width: 960px;
+}
+
+.sentence {
+  font-size: clamp(30px, 4.4vw, 54px);
+  font-weight: 500;
+  letter-spacing: -0.025em;
+  line-height: 1.42;
+  max-width: 17em;
+}
+
+.hint {
+  max-width: 560px;
+  margin: 24px 0 0;
+  font-size: 15px;
+  line-height: 1.55;
+  color: var(--muted);
+}
+
+.actions {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  margin-top: 36px;
+}
+
+.primary {
+  padding: 13px 26px;
+  border: none;
+  border-radius: 999px;
+  background: var(--ink);
+  color: var(--bg);
+  font-size: 15px;
+  font-weight: 500;
+}
+
+.primary:disabled {
+  background: var(--faint);
+}
+
+.status {
+  font-size: 14px;
+  color: var(--muted);
+}
+
+.warning {
+  padding: 7px 12px;
+  border-radius: 999px;
+  background: var(--warn-bg);
+  color: var(--warn-ink);
+  font-size: 14px;
+}
+
+.error {
+  margin: 16px 0 0;
+  font-size: 14px;
+  color: var(--red-ink);
+}
+
+.steps {
+  max-width: 520px;
+  margin-top: 40px;
+  padding-top: 28px;
+  border-top: 1px solid var(--line);
+}

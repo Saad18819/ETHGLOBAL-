@@ -7,6 +7,10 @@
   margin: 0 auto;
 }
 
+.layout[data-compact] {
+  padding-top: 48px;
+}
+
 .main {
   min-width: 0;
 }

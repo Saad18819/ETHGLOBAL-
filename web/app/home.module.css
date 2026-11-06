@@ -1,0 +1,42 @@
+.tabs {
+  display: flex;
+  gap: 28px;
+  max-width: 1280px;
+  margin: 0 auto;
+  padding: 36px 40px 0;
+}
+
+.tab {
+  padding: 0 0 8px;
+  border: none;
+  border-bottom: 2px solid transparent;
+  background: none;
+  color: var(--muted);
+  font-size: 15px;
+}
+
+.tab:hover {
+  color: var(--ink);
+}
+
+.tab[aria-selected="true"] {
+  border-bottom-color: var(--ink);
+  color: var(--ink);
+}
+
+.panel {
+  max-width: 1280px;
+  margin: 0 auto;
+  padding: 48px 40px 96px;
+}
+
+@media (max-width: 640px) {
+  .tabs {
+    gap: 20px;
+    padding: 24px 16px 0;
+  }
+
+  .panel {
+    padding: 32px 16px 64px;
+  }
+}

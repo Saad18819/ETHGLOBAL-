@@ -4,7 +4,7 @@ import Link from "next/link";
 import { useQuery } from "@tanstack/react-query";
 import { useConnection } from "wagmi";
 
-import styles from "./history.module.css";
+import styles from "./History.module.css";
 import { protocolOf, protocols, swatchStyle } from "@/lib/brand";
 import { purposeTitle, useHistory, type Entry } from "@/lib/history";
 
@@ -20,7 +20,8 @@ const statusText: Record<Entry["status"], string> = {
 
 type Arrival = { at: number; symbol: string; amount: number; href: string };
 
-export default function History() {
+/// Past moves from this browser and every bridge that reached the wallet on Arc.
+export function History() {
   const { address } = useConnection();
   const entries = useHistory(address);
   const arrivals = useQuery({
@@ -34,23 +35,21 @@ export default function History() {
 
   if (!address) {
     return (
-      <main className={styles.page}>
-        <h1 className={styles.title}>History</h1>
+      <div className={styles.page}>
         <p className={styles.muted}>Connect a wallet to see what it moved and what for.</p>
-      </main>
+      </div>
     );
   }
 
   return (
-    <main className={styles.page}>
-      <h1 className={styles.title}>History</h1>
+    <div className={styles.page}>
 
       <section>
         <h2 className={styles.heading}>Your moves</h2>
         {entries.length === 0 && <p className={styles.muted}>Moves made from this browser show up here.</p>}
         <ul className={styles.list}>
           {entries.map((entry) => {
-            const brand = protocols[protocolOf[entry.purpose]];
+            const brand = protocols[entry.purpose === "back" ? "arc" : protocolOf[entry.purpose]];
             return (
               <li key={entry.id} className={styles.entry}>
                 <div className={styles.row}>
@@ -105,6 +104,6 @@ export default function History() {
           {arrivals.isFetched && arrivals.data?.length === 0 && <p className={styles.muted}>Nothing yet.</p>}
         </ul>
       </section>
-    </main>
+    </div>
   );
 }
