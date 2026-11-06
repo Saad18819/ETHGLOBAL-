@@ -17,7 +17,6 @@ const positionAbi = parseAbi([
   "function modifyLiquidities(bytes unlockData, uint256 deadline) payable",
   "function nextTokenId() view returns (uint256)",
   "function initializePool((address currency0, address currency1, uint24 fee, int24 tickSpacing, address hooks) key, uint160 sqrtPriceX96) payable returns (int24)",
-  "function multicall(bytes[] data) payable returns (bytes[] results)",
 ]);
 
 const MIN_TICK = -887272;
@@ -40,45 +39,50 @@ export function fullRange(spacing: number): [number, number] {
   return [Math.ceil(MIN_TICK / spacing) * spacing, Math.floor(MAX_TICK / spacing) * spacing];
 }
 
-async function approveForPositions(token: Address, account: Address, amount: bigint) {
-  const allowance = await readContract(config, {
-    chainId: arc.chainId,
-    address: token,
-    abi: erc20Abi,
-    functionName: "allowance",
-    args: [account, PERMIT2],
-  });
-  if (allowance < amount) {
-    const hash = await writeContract(config, {
-      chainId: arc.chainId,
-      address: token,
-      abi: erc20Abi,
-      functionName: "approve",
-      args: [PERMIT2, maxUint256],
-    });
-    await waitForTransactionReceipt(config, { chainId: arc.chainId, hash });
-  }
-  const [permitted, expiration] = await readContract(config, {
-    chainId: arc.chainId,
-    address: PERMIT2,
-    abi: permit2Abi,
-    functionName: "allowance",
-    args: [account, token, POSITION_MANAGER],
-  });
-  if (permitted < amount || expiration < Date.now() / 1000 + 60) {
-    const hash = await writeContract(config, {
+/// Arc's predeployed batcher. Each call in a batch runs through the CallFrom precompile, so every target
+/// sees the wallet as msg.sender: approvals and the mint go out as one transaction
+/// (docs.arc.io/arc/concepts/batched-transactions).
+const MULTICALL3_FROM = "0x522fAf9A91c41c443c66765030741e4AaCe147D0";
+const batcherAbi = parseAbi([
+  "function aggregate3((address target, bool allowFailure, bytes callData)[] calls) returns ((bool success, bytes returnData)[])",
+]);
+type Call = { target: Address; allowFailure: boolean; callData: Hex };
+
+/// Permit2 allowances are granted for the full amount and 30 days, as Uniswap's own app does, so repeat
+/// moves skip them. Permit2 only lets PositionManager pull in a transaction the wallet itself sends.
+const MAX_UINT160 = 2n ** 160n - 1n;
+const PERMIT_DAYS = 30;
+
+/// The approvals PositionManager still needs for this amount of a token: the token to Permit2, then
+/// Permit2 to PositionManager.
+async function approvalCalls(token: Address, account: Address, amount: bigint): Promise<Call[]> {
+  const [allowance, [permitted, expiration]] = await Promise.all([
+    readContract(config, { chainId: arc.chainId, address: token, abi: erc20Abi, functionName: "allowance", args: [account, PERMIT2] }),
+    readContract(config, {
       chainId: arc.chainId,
       address: PERMIT2,
       abi: permit2Abi,
-      functionName: "approve",
-      args: [token, POSITION_MANAGER, amount, Math.floor(Date.now() / 1000) + 3600],
-    });
-    await waitForTransactionReceipt(config, { chainId: arc.chainId, hash });
+      functionName: "allowance",
+      args: [account, token, POSITION_MANAGER],
+    }),
+  ]);
+  const calls: Call[] = [];
+  if (allowance < amount) {
+    calls.push({ target: token, allowFailure: false, callData: encodeFunctionData({ abi: erc20Abi, functionName: "approve", args: [PERMIT2, maxUint256] }) });
   }
+  if (permitted < amount || expiration < Date.now() / 1000 + 600) {
+    const until = Math.floor(Date.now() / 1000) + PERMIT_DAYS * 86_400;
+    calls.push({
+      target: PERMIT2,
+      allowFailure: false,
+      callData: encodeFunctionData({ abi: permit2Abi, functionName: "approve", args: [token, POSITION_MANAGER, MAX_UINT160, until] }),
+    });
+  }
+  return calls;
 }
 
 /// Mints a position from the wallet with what it holds of each side. A pool nobody has opened yet is
-/// initialized at `open` in the same transaction (PositionManager multicall: initializePool, then
+/// initialized at `open` in the same batch (Multicall3From: approvals, initializePool, then
 /// modifyLiquidities).
 export async function mintPosition(
   {
@@ -108,9 +112,7 @@ export async function mintPosition(
   const liquidity = liquidityFor(sqrtPrice, lower, upper, amount0, amount1);
   if (liquidity <= 0n) throw new Error("Not enough on both sides to open a position");
 
-  onStep("Approving the pool tokens");
-  await approveForPositions(key.currency0, account, amount0);
-  await approveForPositions(key.currency1, account, amount1);
+  const approvals = [...(await approvalCalls(key.currency0, account, amount0)), ...(await approvalCalls(key.currency1, account, amount1))];
 
   const keyType = {
     type: "tuple",
@@ -141,27 +143,26 @@ export async function mintPosition(
     abi: positionAbi,
     functionName: "nextTokenId",
   });
-  onStep(open ? `Opening the ${pair.id} pool and adding liquidity` : "Adding liquidity on Uniswap");
-  const hash = open
-    ? await writeContract(config, {
-        chainId: arc.chainId,
-        address: POSITION_MANAGER,
-        abi: positionAbi,
-        functionName: "multicall",
-        args: [
-          [
-            encodeFunctionData({ abi: positionAbi, functionName: "initializePool", args: [key, open] }),
-            encodeFunctionData({ abi: positionAbi, functionName: "modifyLiquidities", args: [unlockData, deadline] }),
-          ],
-        ],
-      })
-    : await writeContract(config, {
-        chainId: arc.chainId,
-        address: POSITION_MANAGER,
-        abi: positionAbi,
-        functionName: "modifyLiquidities",
-        args: [unlockData, deadline],
-      });
+  // Approvals, opening a new pool and the mint, all in one transaction.
+  const calls: Call[] = [
+    ...approvals,
+    ...(open
+      ? [{ target: POSITION_MANAGER as Address, allowFailure: false, callData: encodeFunctionData({ abi: positionAbi, functionName: "initializePool", args: [key, open] }) }]
+      : []),
+    {
+      target: POSITION_MANAGER,
+      allowFailure: false,
+      callData: encodeFunctionData({ abi: positionAbi, functionName: "modifyLiquidities", args: [unlockData, deadline] }),
+    },
+  ];
+  onStep(open ? `Opening the ${pair.id} pool and adding liquidity in one transaction` : "Approving and adding liquidity in one transaction");
+  const hash = await writeContract(config, {
+    chainId: arc.chainId,
+    address: MULTICALL3_FROM,
+    abi: batcherAbi,
+    functionName: "aggregate3",
+    args: [calls],
+  });
   await waitForTransactionReceipt(config, { chainId: arc.chainId, hash });
   return { tokenId, hash };
 }

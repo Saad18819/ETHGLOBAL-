@@ -141,12 +141,10 @@ export function Sentence({
                   : `not opened yet, ${pool.fee / 10_000}% fee`,
             }))}
             onChange={(pool) => set({ pool })}
-          >
-            {poolAprs?.[plan.pool] !== undefined
-              ? `${plan.pool} pool at ${percent(poolAprs[plan.pool], 1)} APR`
-              : `${plan.pool} pool`}
-          </Select>
-          ,{" "}
+          />{" "}
+          {/* Only the pool is a choice; its rate is a fact about it, so it reads as plain text. */}
+          pool
+          {poolAprs?.[plan.pool] !== undefined ? ` at ${percent(poolAprs[plan.pool], 1)} APR` : ""},{" "}
           <Select<Range>
             label="Range"
             swatch={brand}

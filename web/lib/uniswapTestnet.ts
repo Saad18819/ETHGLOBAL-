@@ -211,7 +211,7 @@ export async function swapTestnet(
 }
 
 /// The UniversalRouter pulls ERC20s through Permit2: the token approves Permit2 once, then Permit2 lets the
-/// router take this amount for the next hour.
+/// router take it.
 async function approveThroughPermit2(chain: Deployment, account: Address, token: Address, amount: bigint) {
   const allowance = await readContract(config, {
     chainId: chain.chainId,
@@ -237,13 +237,15 @@ async function approveThroughPermit2(chain: Deployment, account: Address, token:
     functionName: "allowance",
     args: [account, token, chain.universalRouter],
   });
-  if (permitted < amount || expiration < Date.now() / 1000 + 60) {
+  if (permitted < amount || expiration < Date.now() / 1000 + 600) {
     const hash = await writeContract(config, {
       chainId: chain.chainId,
       address: PERMIT2,
       abi: permit2Abi,
       functionName: "approve",
-      args: [token, chain.universalRouter, amount, Math.floor(Date.now() / 1000) + 3600],
+      // The full amount for 30 days, as Uniswap's own app grants, so repeat swaps skip this step. Permit2
+      // only lets the router pull in a transaction the wallet itself sends.
+      args: [token, chain.universalRouter, 2n ** 160n - 1n, Math.floor(Date.now() / 1000) + 30 * 86_400],
     });
     await waitForTransactionReceipt(config, { chainId: chain.chainId, hash });
   }
