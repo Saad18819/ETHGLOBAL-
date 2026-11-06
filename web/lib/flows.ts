@@ -83,6 +83,10 @@ export type Context = {
 };
 
 const none = { limit: 0n, data: "0x" as Hex };
+
+/// Room over the quoted cost of an exact EURC payment on Arc. The pool is thin and other moves shift its
+/// price in the minutes before the payment settles; whatever is not spent comes back to the payer.
+export const EURC_PAY_MARGIN = 1.03;
 const units = (value: number) => BigInt(Math.floor(value * 1e6));
 
 /// What the settlement contract on Arc does once the USDC is there, with the price bounds it enforces.
@@ -95,8 +99,9 @@ export function settlementAction({ plan, recipient, minOut = 0n, poolTick = 0, r
         return { ...none, action: Action.Pay, recipient, token: arc.usdc, amount: units(amount) };
       }
       if (!eurcCost) throw new Error("The EURC price on Arc is not loaded yet");
-      // The most USDC the exact EURC payment may cost: the quoted cost, then the slippage.
-      return { ...none, action: Action.Pay, recipient, token: arc.eurc, amount: units(amount), limit: units(eurcCost / keep) + 1n };
+      // The most USDC the exact EURC payment may cost: the quoted cost with room for the price to move.
+      const limit = units((eurcCost * EURC_PAY_MARGIN) / keep) + 1n;
+      return { ...none, action: Action.Pay, recipient, token: arc.eurc, amount: units(amount), limit };
     }
     case "hold":
       // USDC lands as it is; EURC is bought on the Uniswap pool with a minimum out.

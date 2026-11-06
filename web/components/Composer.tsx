@@ -15,7 +15,7 @@ import { Sentence } from "./Sentence";
 import { RouterTracker } from "./Tracker";
 import { sources } from "@/lib/chains";
 import { arc } from "@/lib/contracts";
-import { cctpFees, resolveRecipient, sendElsewhere, StuckTransfer, wrapEth, type CctpFees, sendThroughRouter, sendThroughWallet, type RouterResult } from "@/lib/flows";
+import { cctpFees, EURC_PAY_MARGIN, resolveRecipient, sendElsewhere, StuckTransfer, wrapEth, type CctpFees, sendThroughRouter, sendThroughWallet, type RouterResult } from "@/lib/flows";
 import { MAX_LEVERAGE } from "@/lib/loop";
 import { holdingOf, short, spendable, useBalances } from "@/lib/balances";
 import { describe, publish, record } from "@/lib/history";
@@ -511,6 +511,8 @@ function liquidityTarget(state: PoolState, prices: Record<string, number> | unde
 /// Room left between what a move is worth and what it pays, for prices that move before it lands: a
 /// little when the money stays the same stablecoin, more when a swap is on the way.
 function marginFor(plan: Plan) {
+  // An exact EURC payment through our contracts may spend up to this much over its quote on Arc.
+  if (plan.next === "pay" && plan.payToken === "EURC" && routeOf(plan) === "router") return EURC_PAY_MARGIN;
   const swapless = assets[plan.asset].token.kind === "stable" && !viaUniswap(plan) && bridgedAsset(plan) === plan.payToken;
   return swapless ? 1.005 : 1.02;
 }
