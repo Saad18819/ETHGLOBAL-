@@ -1,5 +1,6 @@
 import { sourceIds, sources, type SourceId } from "./chains";
-import { pools } from "./pools";
+import { MAX_LEVERAGE } from "./loop";
+import { pools } from "./pairs";
 import { arcSwappable, tokenBySymbol, tokens, type Token } from "./tokens";
 
 export type { SourceId } from "./chains";
@@ -29,8 +30,6 @@ export type Plan = {
   leverage: string;
   speed: Speed;
   slippage: string;
-  /// Where the result of a non-payment goes. Empty means the connected wallet.
-  to: string;
 };
 
 export const defaultPlan: Plan = {
@@ -48,7 +47,6 @@ export const defaultPlan: Plan = {
   leverage: "1.5",
   speed: "fast",
   slippage: "0.1",
-  to: "",
 };
 
 const examples: Record<Token["kind"], string> = {
@@ -135,31 +133,31 @@ export const nextSteps: NextStep[] = [
   {
     id: "pay",
     title: "Pay someone",
-    body: "They get the exact amount on Arc, tagged with your invoice id, whatever you moved.",
+    body: "Send an exact amount to anyone on Arc, or to another wallet of yours.",
     verb: "pay",
   },
   {
     id: "hold",
     title: "Hold on Arc",
-    body: "Land it as a stablecoin or cirBTC, swapped where the liquidity is, or keep what you moved.",
+    body: "Keep it on Arc, in the currency you choose.",
     verb: "hold",
   },
   {
     id: "pool",
     title: "Uniswap pool on Arc",
-    body: `Provide liquidity to ${pools.map((pool) => pool.id).join(", ")} in the range you pick. The position NFT is yours.`,
+    body: "Earn a share of trading fees on Uniswap. Withdraw any time.",
     verb: "add liquidity to the",
   },
   {
     id: "lend",
     title: "Lend on Morpho",
-    body: "Deposit into a Morpho USDC vault on Arc and earn the lending rate.",
+    body: "Earn interest in a Morpho vault on Arc.",
     verb: "lend it on",
   },
   {
     id: "loop",
     title: "Loop BTC",
-    body: "Turn it into cirBTC, borrow USDC against it on Morpho, buy more, repeat.",
+    body: `Get up to ${MAX_LEVERAGE}x BTC exposure, using a loan on Morpho.`,
     verb: "loop cirBTC to",
   },
 ];

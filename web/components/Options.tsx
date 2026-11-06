@@ -9,12 +9,10 @@ export function Options({
   plan,
   onChange,
   swaps,
-  forwards,
 }: {
   plan: Plan;
   onChange: (plan: Plan) => void;
   swaps: boolean;
-  forwards: boolean;
 }) {
   const set = (patch: Partial<Plan>) => onChange(normalizePlan({ ...plan, ...patch }));
 
@@ -37,18 +35,6 @@ export function Options({
           onChange={(slippage) => set({ slippage })}
           custom={{ min: 0.01, max: 20, suffix: "%" }}
         />
-      )}
-      {forwards && (
-        <label className={styles.field}>
-          <span className={styles.caption}>Send result to</span>
-          <input
-            className={styles.input}
-            value={plan.to}
-            placeholder="my wallet"
-            spellCheck={false}
-            onChange={(event) => set({ to: event.target.value })}
-          />
-        </label>
       )}
     </div>
   );

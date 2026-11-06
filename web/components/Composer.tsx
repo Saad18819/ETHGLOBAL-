@@ -201,7 +201,7 @@ export function Composer({
     };
     try {
       const recipient =
-        plan.next === "pay" ? await resolveRecipient(plan.recipient) : plan.to ? await resolveRecipient(plan.to) : address;
+        plan.next === "pay" ? await resolveRecipient(plan.recipient) : address;
       let effective = plan;
       if (wrapsIntoWeth(plan.asset, plan.from) && bridgedAsset(plan) === "WETH") {
         await wrapEth(plan.from, amountIn, report);
@@ -315,7 +315,7 @@ export function Composer({
           }}
         />
 
-        <Options plan={plan} onChange={setPlan} swaps={swaps} forwards={forwards(plan, route)} />
+        <Options plan={plan} onChange={setPlan} swaps={swaps} />
         <Details
           plan={plan}
           markets={markets.data && { ...markets.data, vaults }}
@@ -397,12 +397,6 @@ export function Composer({
       )}
     </div>
   );
-}
-
-/// Whether the result can be sent to someone other than the connected wallet.
-function forwards(plan: Plan, route: ReturnType<typeof routeOf>) {
-  if (plan.next === "hold") return true;
-  return route === "router" && (plan.next === "pool" || plan.next === "lend");
 }
 
 function findBlocker(
