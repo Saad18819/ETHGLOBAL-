@@ -4,7 +4,7 @@ We built andthen with Claude Code (Anthropic) as a pair programmer. This file li
 
 ## What we did
 
-- The idea, the product, the sentence UI, the choice of tracks and the architecture (CCTP for money, CCIP for intent and receipt, Uniswap pools as destinations, Bridge Kit for non-USDC assets).
+- The idea, the product, the sentence UI, the choice of tracks and the architecture (CCTP for money and the intent as hook data, CCIP for the receipt, Uniswap pools as destinations, Bridge Kit for non-USDC assets).
 - Every design decision where the docs left a choice, for example emitting our own `Settled` event when Arc's `Memo` contract turned out to reject contract callers.
 - Review of all code before it was committed.
 

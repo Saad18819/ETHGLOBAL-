@@ -145,7 +145,7 @@ export { orderKey } from "./order";
 
 export type RouterResult = { key: Hex; txHash: Hex; sourceChainId: number; explorer: string };
 
-/// USDC from a chain with a CCIP lane: CCTP carries the money, CCIP carries the instruction.
+/// USDC from a chain with our router: one CCTP burn carries the money and, as hook data, the instruction.
 export async function sendThroughRouter(context: Context, onStep: (label: string) => void): Promise<RouterResult> {
   const source = sources[context.plan.from];
   const router = source.router;
@@ -183,14 +183,6 @@ export async function sendThroughRouter(context: Context, onStep: (label: string
     await waitForTransactionReceipt(config, { chainId, hash });
   }
 
-  const ccipFee = await readContract(config, {
-    chainId,
-    address: router.address,
-    abi: routerAbi,
-    functionName: "quote",
-    args: [intent],
-  });
-
   onStep("Confirm in your wallet");
   const txHash = await writeContract(config, {
     chainId,
@@ -198,7 +190,6 @@ export async function sendThroughRouter(context: Context, onStep: (label: string
     abi: routerAbi,
     functionName: "send",
     args: [intent, amount, maxFee, fast ? FAST : STANDARD],
-    value: (ccipFee * 12n) / 10n,
   });
 
   onStep(`Waiting for ${source.label}`);
