@@ -11,6 +11,7 @@ import { Field, Select } from "@/components/Pill";
 import { config } from "@/lib/config";
 import { arc, base, deployed, invoiceAbi } from "@/lib/contracts";
 import { resolveRecipient } from "@/lib/flows";
+import { shortAddress } from "@/lib/format";
 
 type Token = "USDC" | "EURC";
 
@@ -53,7 +54,7 @@ export default function RequestPayment() {
   return (
     <main className={styles.page}>
       <div className={styles.sentence}>
-        Request <Field label="Amount" numeric value={amount} onChange={setAmount} />{" "}
+        Request <Field label="Amount" numeric value={amount} onChange={setAmount} maxChars={10} />{" "}
         <Select<Token>
           label="Token"
           tone="green"
@@ -65,8 +66,17 @@ export default function RequestPayment() {
           onChange={setToken}
         />{" "}
         on Arc, paid to{" "}
-        <Field label="Payee" tone="sand" placeholder="my wallet" value={payee} onChange={setPayee} />, for{" "}
-        <Field label="Memo" tone="violet" placeholder="order 42" value={memo} onChange={setMemo} />.
+        <Field
+          label="Payee"
+          tone="sand"
+          placeholder="my wallet"
+          value={payee}
+          onChange={setPayee}
+          display={shortAddress}
+          maxChars={18}
+        />
+        , for{" "}
+        <Field label="Memo" tone="violet" placeholder="order 42" value={memo} onChange={setMemo} maxChars={16} />.
       </div>
       <p className={styles.hint}>
         The payer can use any supported token from Base. You get the exact amount on Arc, and the invoice on Base
