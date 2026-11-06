@@ -76,7 +76,12 @@ export function short(amount: string) {
 export function spendable(asset: AssetId, from: SourceId, amount: string, share = 1) {
   const token = assets[asset]?.token;
   const gas = token?.sources[from] === "native" ? 0.9 : 1;
+  // Arc pays gas in USDC, so a little stays behind for the move's own transaction.
+  const reserve = from === "arc" && asset === "USDC" ? ARC_GAS_RESERVE : 0;
   const digits = Math.min(token?.decimals ?? 6, token?.kind === "btc" ? 6 : token?.kind === "eth" ? 4 : 2);
   const factor = 10 ** digits;
-  return String(Math.floor(Number(amount) * share * gas * factor) / factor);
+  return String(Math.max(0, Math.floor((Number(amount) - reserve) * share * gas * factor) / factor));
 }
+
+/// USDC kept on Arc for gas when moving the rest out.
+const ARC_GAS_RESERVE = 0.1;

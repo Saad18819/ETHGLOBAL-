@@ -1,6 +1,8 @@
 import type { Address, Chain } from "viem";
 import {
   arbitrum,
+  arc,
+  arcTestnet,
   arbitrumSepolia,
   avalanche,
   avalancheFuji,
@@ -18,7 +20,9 @@ import {
 
 import { isTestnet } from "./network";
 
-export type SourceId = "base" | "ethereum" | "polygon" | "arbitrum" | "optimism" | "avalanche" | "unichain";
+/// Every chain a move can start from or end on. Arc is both: moves land there by default, and money on
+/// Arc can go out to any of the others.
+export type SourceId = "base" | "ethereum" | "polygon" | "arbitrum" | "optimism" | "avalanche" | "unichain" | "arc";
 
 export type Source = {
   label: string;
@@ -80,6 +84,7 @@ const mainnetSources: Record<SourceId, Source> = {
   },
   avalanche: { label: "Avalanche", chain: avalanche, kitChain: "Avalanche", cctpDomain: 1, explorer: "https://snowtrace.io" },
   unichain: { label: "Unichain", chain: unichain, kitChain: "Unichain", cctpDomain: 10, explorer: "https://uniscan.xyz" },
+  arc: { label: "Arc", chain: arc, kitChain: "Arc", cctpDomain: 26, explorer: "https://explorer.arc.io" },
 };
 
 /// The same chains' testnets, with the same Circle domains.
@@ -148,11 +153,15 @@ const testnetSources: Record<SourceId, Source> = {
     cctpDomain: 10,
     explorer: "https://sepolia.uniscan.xyz",
   },
+  arc: { label: "Arc", chain: arcTestnet, kitChain: "Arc_Testnet", cctpDomain: 26, explorer: "https://explorer.testnet.arc.io" },
 };
 
 export const sources = isTestnet ? testnetSources : mainnetSources;
 
 export const sourceIds = Object.keys(sources) as SourceId[];
+
+/// Chains other than Arc, where a move starts when it heads to Arc.
+export const offArc = sourceIds.filter((id) => id !== "arc");
 
 /// Rough CCTP arrival times. Standard waits for finality on the source chain, which for L2s means Ethereum.
 export const arrival = (fast: boolean) => (fast ? "under a minute" : "about 15 to 20 minutes");

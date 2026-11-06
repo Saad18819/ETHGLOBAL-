@@ -1,13 +1,13 @@
 "use client";
 
 import { useState } from "react";
-import Link from "next/link";
 import { useQuery } from "@tanstack/react-query";
 import { useConnection } from "wagmi";
 
 import styles from "./History.module.css";
 import type { Activity, Purpose } from "@/app/api/activity/route";
 import { protocolOf, protocols, swatchStyle } from "@/lib/brand";
+import { sources } from "@/lib/chains";
 import { purposeTitle, useHistory, type Entry } from "@/lib/history";
 
 const when = (at: number) =>
@@ -143,7 +143,9 @@ export function History() {
                   {row.stuck && (
                     <>
                       {". "}
-                      <Link href={`/finish?from=${row.stuck.from}&tx=${row.stuck.tx}`}>Finish it on Arc</Link>
+                      <a href={`${sources[row.stuck.from].explorer}/tx/${row.stuck.tx}`} target="_blank" rel="noreferrer">
+                        See the burn
+                      </a>
                     </>
                   )}
                 </p>

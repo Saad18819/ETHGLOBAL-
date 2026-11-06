@@ -12,9 +12,11 @@ import { percent, usd, type Vault } from "@/lib/markets";
 import {
   assets,
   bridgedAsset,
+  destinations,
   holdOptions,
   nextSteps,
   normalizePlan,
+  payOptions,
   ranges,
   routeOf,
   stepOf,
@@ -98,7 +100,19 @@ export function Sentence({
         })}
         onChange={(from) => set({ from })}
       />{" "}
-      to Arc, <span className={styles.andthen}>and then</span>{" "}
+      to{" "}
+      {locked ? (
+        "Arc"
+      ) : (
+        <Select<SourceId>
+          label="To"
+          tone="stone"
+          value={plan.to}
+          options={destinations(plan).map((id) => ({ value: id, label: sources[id].label }))}
+          onChange={(to) => set({ to })}
+        />
+      )}
+      , <span className={styles.andthen}>and then</span>{" "}
       {locked ? (
         <Fixed swatch={brand}>{stepOf(plan.next).verb}</Fixed>
       ) : (
@@ -119,7 +133,7 @@ export function Sentence({
             label="Hold as"
             swatch={tokenColor(plan.hold)}
             value={plan.hold}
-            options={holdOptions(plan.asset, plan.from).map((token) => ({
+            options={holdOptions(plan.asset, plan.from, plan.to).map((token) => ({
               value: token,
               label: token,
               hint: token === bridgedAsset(plan) ? "no swap" : undefined,
@@ -230,9 +244,7 @@ export function Sentence({
                 label="Pay in"
                 swatch={tokenColor(plan.payToken)}
                 value={plan.payToken}
-                options={(viaRouter ? (["USDC", "EURC"] as const) : (["USDC", "EURC", "cirBTC"] as const)).map(
-                  (token) => ({ value: token, label: token }),
-                )}
+                options={payOptions(plan, viaRouter).map((token) => ({ value: token, label: token }))}
                 onChange={(payToken) => set({ payToken })}
               />
             </>
