@@ -1,0 +1,113 @@
+.page {
+  display: grid;
+  gap: 36px;
+  max-width: 720px;
+  margin: 0 auto;
+  padding: 48px 40px 96px;
+}
+
+.title {
+  margin: 0;
+  font-size: 40px;
+  font-weight: 600;
+  letter-spacing: -0.03em;
+}
+
+.heading {
+  margin: 0 0 6px;
+  font-size: 15px;
+  font-weight: 600;
+}
+
+.muted {
+  margin: 0;
+  color: var(--muted);
+  font-size: 14px;
+}
+
+.list {
+  display: grid;
+  gap: 10px;
+  margin: 14px 0 0;
+  padding: 0;
+  list-style: none;
+}
+
+.entry {
+  display: grid;
+  gap: 6px;
+  padding: 16px 18px;
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  background: var(--surface);
+}
+
+.row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.tag {
+  padding: 3px 10px;
+  border-radius: 999px;
+  background: var(--pill-bg);
+  color: var(--pill-ink);
+  font-size: 12px;
+  font-weight: 500;
+}
+
+.when {
+  color: var(--muted);
+  font-size: 12px;
+}
+
+.summary {
+  margin: 0;
+  font-size: 15px;
+}
+
+.status {
+  margin: 0;
+  color: var(--green-ink);
+  font-size: 13px;
+}
+
+.status[data-status="failed"],
+.status[data-status="stuck"] {
+  color: var(--warn-ink);
+}
+
+.status[data-status="sent"] {
+  color: var(--muted);
+}
+
+.links {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px 14px;
+  margin: 0;
+  font-size: 13px;
+}
+
+.links a,
+.arrival a {
+  color: var(--muted);
+}
+
+.arrival {
+  display: grid;
+  grid-template-columns: 1fr auto auto;
+  gap: 16px;
+  align-items: baseline;
+  padding: 10px 0;
+  border-bottom: 1px solid var(--line);
+  font-size: 14px;
+}
+
+@media (max-width: 640px) {
+  .page {
+    padding: 32px 16px 64px;
+  }
+}
