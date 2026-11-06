@@ -31,6 +31,7 @@ const summary = new Set([
   "Deposits into",
   "Pool",
   "New pool",
+  "Same pair elsewhere",
   "Exposure",
   "Risk",
 ]);
@@ -109,7 +110,7 @@ export function Details({
       rows.push(...holdRows(plan, amount * price, markets, pool));
       break;
     case "pool":
-      rows.push(...(plan.pool === "USDC/EURC" ? poolRows(plan, valueUsd, pool, markets) : pairRows(plan, valueUsd, chosenPool)));
+      rows.push(...(plan.pool === "USDC/EURC" ? poolRows(plan, valueUsd, pool, markets) : pairRows(plan, valueUsd, chosenPool, markets)));
       break;
     case "lend":
       rows.push(...lendRows(plan, valueUsd, markets));
@@ -203,10 +204,17 @@ function poolRows(plan: Plan, amount: number, pool?: PoolStats, markets?: Market
 }
 
 /// Any other pair on Arc. Arc mainnet has no such pool yet, so there are no mainnet numbers to show.
-function pairRows(plan: Plan, valueUsd: number, state?: PoolState): Row[] {
+function pairRows(plan: Plan, valueUsd: number, state?: PoolState, markets?: Markets): Row[] {
   if (!state) return [];
   const { pair } = state;
   const rows: Row[] = [["Pool", `Uniswap v4 ${pair.id}, ${pair.fee / 10_000}% fee tier${isTestnet ? ", Arc Testnet" : ""}`]];
+  const reference = markets?.mainnet.references.find((ref) => ref.pair === pair.id);
+  if (reference) {
+    rows.push([
+      "Same pair elsewhere",
+      `${percent(reference.apr)} fee APR over 7 days in ${reference.source}, ${usd(reference.tvl)} of liquidity`,
+    ]);
+  }
   if (!state.exists) {
     rows.push(["New pool", `Nobody has opened ${pair.id} on Arc yet. You open it at the market price and set its first quotes.`]);
   } else {
