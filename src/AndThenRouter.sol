@@ -4,6 +4,7 @@ pragma solidity ^0.8.26;
 import {IERC20} from "@openzeppelin/contracts/token/ERC20/IERC20.sol";
 import {SafeERC20} from "@openzeppelin/contracts/token/ERC20/utils/SafeERC20.sol";
 import {Ownable} from "@openzeppelin/contracts/access/Ownable.sol";
+import {Ownable2Step} from "@openzeppelin/contracts/access/Ownable2Step.sol";
 import {IRouterClient} from "@chainlink/contracts-ccip/contracts/interfaces/IRouterClient.sol";
 import {Client} from "@chainlink/contracts-ccip/contracts/libraries/Client.sol";
 import {ExtraArgsCodec} from "@chainlink/contracts-ccip/contracts/libraries/ExtraArgsCodec.sol";
@@ -13,12 +14,16 @@ import {Currency} from "@uniswap/v4-core/src/types/Currency.sol";
 
 import {ITokenMessengerV2} from "./interfaces/ICCTP.sol";
 import {UniswapV4Swapper} from "./UniswapV4Swapper.sol";
-import {Intent} from "./libraries/Intent.sol";
+import {Intent, IntentLib} from "./libraries/Intent.sol";
 
 /// Lives on the source chain. Turns the input into USDC, burns it over CCTP towards the
 /// settlement contract on Arc, and sends the instruction there over CCIP.
-contract AndThenRouter is UniswapV4Swapper, Ownable {
+contract AndThenRouter is UniswapV4Swapper, Ownable2Step {
     using SafeERC20 for IERC20;
+    using IntentLib for Intent;
+
+    /// Keeps the CCIP message small enough to always execute on Arc.
+    uint256 public constant MAX_DATA = 64;
 
     uint32 public constant ARC_DOMAIN = 26;
 
@@ -37,6 +42,7 @@ contract AndThenRouter is UniswapV4Swapper, Ownable {
     );
 
     error NotUsdcPool();
+    error DataTooLong();
     error FeeTooLow(uint256 fee);
     error RefundFailed();
 
@@ -47,8 +53,8 @@ contract AndThenRouter is UniswapV4Swapper, Ownable {
         IPoolManager _poolManager,
         uint64 _arcSelector,
         address _settlement,
-        address owner
-    ) UniswapV4Swapper(_poolManager) Ownable(owner) {
+        address initialOwner
+    ) UniswapV4Swapper(_poolManager) Ownable(initialOwner) {
         usdc = _usdc;
         tokenMessenger = _tokenMessenger;
         ccipRouter = _ccipRouter;
@@ -77,10 +83,12 @@ contract AndThenRouter is UniswapV4Swapper, Ownable {
         uint256 maxFee,
         uint32 cctpFinality
     ) external payable returns (bytes32) {
-        address tokenOut = Currency.unwrap(key.currency0) == tokenIn
-            ? Currency.unwrap(key.currency1)
-            : Currency.unwrap(key.currency0);
-        if (tokenOut != address(usdc)) revert NotUsdcPool();
+        address currency0 = Currency.unwrap(key.currency0);
+        address currency1 = Currency.unwrap(key.currency1);
+        bool fromZero = currency0 == tokenIn;
+        if ((!fromZero && currency1 != tokenIn) || (fromZero ? currency1 : currency0) != address(usdc)) {
+            revert NotUsdcPool();
+        }
 
         IERC20(tokenIn).safeTransferFrom(msg.sender, address(this), amountIn);
         uint256 amount = _swapExactIn(key, tokenIn, amountIn, minUsdc);
@@ -96,14 +104,16 @@ contract AndThenRouter is UniswapV4Swapper, Ownable {
         internal
         returns (bytes32 id)
     {
+        if (intent.data.length > MAX_DATA) revert DataTooLong();
         id = keccak256(abi.encode(block.chainid, address(this), nonce++));
         intent.id = id;
         intent.payer = msg.sender;
 
+        // The burn commits to the whole intent, so its funds can only ever settle this exact order.
         bytes32 target = bytes32(uint256(uint160(settlement)));
         usdc.forceApprove(address(tokenMessenger), amount);
         tokenMessenger.depositForBurnWithHook(
-            amount, ARC_DOMAIN, target, address(usdc), target, maxFee, cctpFinality, abi.encode(id)
+            amount, ARC_DOMAIN, target, address(usdc), target, maxFee, cctpFinality, abi.encode(intent.key())
         );
 
         Client.EVM2AnyMessage memory message = _message(intent);

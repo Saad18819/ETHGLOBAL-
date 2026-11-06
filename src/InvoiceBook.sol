@@ -4,7 +4,7 @@ pragma solidity ^0.8.26;
 import {CCIPReceiver} from "@chainlink/contracts-ccip/contracts/applications/CCIPReceiver.sol";
 import {Client} from "@chainlink/contracts-ccip/contracts/libraries/Client.sol";
 
-import {Receipt} from "./libraries/Intent.sol";
+import {Action, Receipt} from "./libraries/Intent.sol";
 
 /// Merchant side on the source chain. An invoice is unlocked only by a receipt from the
 /// settlement contract on Arc, delivered over CCIP.
@@ -69,8 +69,9 @@ contract InvoiceBook is CCIPReceiver {
         Receipt memory receipt = abi.decode(message.data, (Receipt));
         Invoice storage invoice = invoices[receipt.invoiceId];
 
-        bool matches = receipt.success && invoice.amount != 0 && invoice.paidAt == 0 && receipt.token == invoice.token
-            && receipt.recipient == invoice.payee && receipt.amount >= invoice.amount;
+        // Only a payment of the invoiced token to the payee counts; other actions report other units.
+        bool matches = receipt.success && receipt.action == Action.Pay && invoice.amount != 0 && invoice.paidAt == 0
+            && receipt.token == invoice.token && receipt.recipient == invoice.payee && receipt.amount >= invoice.amount;
 
         if (!matches) {
             emit Rejected(receipt.invoiceId, receipt.intentId);

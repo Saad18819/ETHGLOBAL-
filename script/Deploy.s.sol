@@ -85,6 +85,7 @@ contract DeployArc is Script {
             IPoolManager(Testnet.ARC_POOL_MANAGER),
             IERC20(Testnet.ARC_USDC),
             IMessageTransmitterV2(Testnet.MESSAGE_TRANSMITTER),
+            Testnet.TOKEN_MESSENGER,
             IPositionManager(Testnet.ARC_POSITION_MANAGER),
             IAllowanceTransfer(Testnet.PERMIT2),
             owner
@@ -136,13 +137,9 @@ contract ConnectArc is Script {
     function run() external {
         Testnet.Source memory src = Testnet.source(vm.envString("SOURCE"));
         AndThenSettlement settlement = AndThenSettlement(vm.envAddress("SETTLEMENT"));
-        uint256 reserve = vm.envOr("RECEIPT_RESERVE", uint256(0));
         vm.startBroadcast();
-        settlement.setSource(src.selector, src.domain, vm.envAddress("ROUTER"));
-        if (reserve > 0) {
-            IERC20(Testnet.ARC_USDC).approve(address(settlement), reserve);
-            settlement.fundReceipts(reserve);
-        }
+        // TokenMessengerV2 has the same address on every CCTP testnet chain.
+        settlement.setSource(src.selector, src.domain, vm.envAddress("ROUTER"), Testnet.TOKEN_MESSENGER, src.usdc);
         vm.stopBroadcast();
     }
 }

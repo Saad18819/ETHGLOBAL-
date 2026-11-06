@@ -37,7 +37,8 @@ InvoiceBook                                    emit Settled(id, invoiceId, ...)
 - **Numbers before you sign.** Vault APY and liquidity, the borrow market's rate and LLTV, and USD prices come live from Circle App Kit; the pool price and in-range depth come from the v4 StateView. The app shows rate, cost, loan to value and liquidation price for the option you pick.
 - **Lend and loop on Morpho.** USDC can land straight in a Morpho USDC vault on Arc (one of the vaults Circle Earn lists), with the shares going to the user. Any asset can be looped into BTC: it is swapped into cirBTC, Circle Borrow takes it as collateral on Morpho, the borrowed USDC buys more cirBTC through Circle Swap and goes back into the same loan, round after round until the chosen leverage.
 - **Bridge Kit for non-USDC assets.** WETH and cirBTC (from Ethereum Sepolia) and EURC (from Base or Ethereum) are bridged natively with Circle Bridge Kit. The "and then" runs from the user's wallet on Arc. Payments go through Arc's `Memo` contract, which only accepts calls from an EOA.
-- **Exact amounts.** Pay actions deliver exactly the requested amount. Whatever is left after the CCTP fee, the swap and the receipt fee goes back to the payer on Arc. If the action can not run, everything is refunded and a failed receipt goes back.
+- **Exact amounts, bounded prices.** Pay actions deliver exactly the requested amount. Every swap carries a price bound and every intent a deadline. Whatever is left after the CCTP fee, the swap and the receipt fee goes back to the payer on Arc. If the action can not run, everything is refunded and a failed receipt goes back.
+- **Funds only settle their own intent.** Orders are keyed by the hash of the whole intent, and the CCTP burn carries that hash.
 
 ## Chain facts that shaped the design
 
@@ -72,7 +73,7 @@ source .env
 forge script script/Deploy.s.sol:DeployArc --rpc-url arc_testnet --broadcast --private-key $PRIVATE_KEY
 # once per source chain: SOURCE is base, sepolia or amoy, with the matching --rpc-url
 SOURCE=base SETTLEMENT=0x... forge script script/Deploy.s.sol:DeploySource --rpc-url base_sepolia --broadcast --private-key $PRIVATE_KEY
-SOURCE=base SETTLEMENT=0x... ROUTER=0x... RECEIPT_RESERVE=2000000 forge script script/Deploy.s.sol:ConnectArc --rpc-url arc_testnet --broadcast --private-key $PRIVATE_KEY
+SOURCE=base SETTLEMENT=0x... ROUTER=0x... forge script script/Deploy.s.sol:ConnectArc --rpc-url arc_testnet --broadcast --private-key $PRIVATE_KEY
 ```
 
 Web app, with the deployed addresses in `web/.env.local` (see `web/.env.example`):
@@ -82,6 +83,10 @@ cd web
 npm install
 npm run dev
 ```
+
+## Security
+
+The contracts were audited with [Arc Studio](https://studio.arc.io): 3 high, 6 medium and 6 low findings. Every high and medium finding is fixed with a regression test, and so are most low ones. The report and our response are in [AUDIT.md](AUDIT.md).
 
 ## AI use
 

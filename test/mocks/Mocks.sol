@@ -9,6 +9,7 @@ import {IAny2EVMMessageReceiver} from "@chainlink/contracts-ccip/contracts/inter
 
 contract MockToken is ERC20 {
     uint8 private immutable _decimals;
+    mapping(address => bool) public blocked;
 
     constructor(string memory symbol, uint8 decimals_) ERC20(symbol, symbol) {
         _decimals = decimals_;
@@ -24,6 +25,16 @@ contract MockToken is ERC20 {
 
     function burn(address from, uint256 amount) external {
         _burn(from, amount);
+    }
+
+    /// Like USDC's blocklist: transfers to a blocked address revert.
+    function setBlocked(address account, bool value) external {
+        blocked[account] = value;
+    }
+
+    function _update(address from, address to, uint256 value) internal override {
+        require(!blocked[to], "blocked");
+        super._update(from, to, value);
     }
 }
 
@@ -90,6 +101,7 @@ contract MockTokenMessenger {
 contract MockCCIPRouter {
     uint256 public fee;
     uint256 public sent;
+    bool public feeReverts;
     uint64 public lastDestination;
     Client.EVM2AnyMessage internal lastMessage;
 
@@ -97,7 +109,12 @@ contract MockCCIPRouter {
         fee = _fee;
     }
 
+    function setFeeReverts(bool value) external {
+        feeReverts = value;
+    }
+
     function getFee(uint64, Client.EVM2AnyMessage memory) external view returns (uint256) {
+        require(!feeReverts, "lane paused");
         return fee;
     }
 
