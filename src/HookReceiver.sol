@@ -76,4 +76,3 @@ contract HookReceiver {
         return abi.decode(ret, (uint256));
     }
 }
-
