@@ -7,7 +7,7 @@ import { orderKey } from "@/lib/order";
 import { addIntent, aggregate, readIntents, updateStatuses, type Intent } from "@/lib/intents";
 import { tokenBySymbol } from "@/lib/tokens";
 
-const purposes = new Set(["pay", "hold", "pool", "lend", "loop", "back"]);
+const purposes = new Set(["pay", "hold", "pool", "lend", "loop"]);
 const statuses = new Set(["done", "sent", "stuck"]);
 
 /// The same RPCs the app reads from, where a chain's default public RPC is unreliable.
@@ -62,7 +62,8 @@ async function settlementStatus(intent: Intent): Promise<Intent["status"] | unde
 /// Aggregated stats over every recorded move. Moves still settling are checked against the settlement
 /// contract first, and their outcome is saved.
 export async function GET() {
-  const intents = await readIntents();
+  // Bridge back is no longer a use case; moves recorded with it before are left out.
+  const intents = (await readIntents()).filter((intent) => intent.purpose !== "back");
   const settling = intents.filter((intent) => intent.status === "sent");
   const outcomes = await Promise.all(settling.map((intent) => settlementStatus(intent).catch(() => undefined)));
   const updates = new Map<string, Intent["status"]>();

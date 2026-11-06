@@ -22,7 +22,6 @@ const purposeColors: Record<string, string> = {
   pool: protocols.uniswap.accent,
   lend: protocols.morpho.accent,
   loop: "#8fb2ff",
-  back: "#a9b3cf",
 };
 const chainColors: Record<string, string> = {
   base: "#0052ff",
@@ -42,7 +41,6 @@ const purposeNames: Record<string, string> = {
   pool: "Uniswap pool",
   lend: "Lend",
   loop: "Leverage",
-  back: "Bridge back",
 };
 
 type Category = Slice & { color: string; label: string };
