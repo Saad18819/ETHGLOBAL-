@@ -216,7 +216,10 @@ function pairRows(plan: Plan, valueUsd: number, state?: PoolState, markets?: Mar
     ]);
   }
   if (!state.exists) {
-    rows.push(["New pool", `Nobody has opened ${pair.id} on Arc yet. You open it at the market price and set its first quotes.`]);
+    rows.push([
+      "New pool",
+      `There is no ${pair.id} pool on Arc yet. Your deposit creates it at today's market price, and you earn every fee until others join.`,
+    ]);
   } else {
     rows.push([`Price${where}`, `1 ${pair.a} = ${state.price.toPrecision(5)} ${pair.b}`]);
     rows.push(["In range now", `about ${usd(state.depthUsd)}`]);

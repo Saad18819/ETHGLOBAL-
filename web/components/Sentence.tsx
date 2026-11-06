@@ -140,7 +140,7 @@ export function Sentence({
               label: pool.id,
               hint: poolRates?.[pool.id]
                 ? `${percent(poolRates[pool.id].apr, 1)} APR${poolRates[pool.id].where ? ` on ${poolRates[pool.id].where}` : ""}, ${pool.fee / 10_000}% fee`
-                : `not opened yet, ${pool.fee / 10_000}% fee`,
+                : `new pool, you start it, ${pool.fee / 10_000}% fee`,
             }))}
             onChange={(pool) => set({ pool })}
           />{" "}

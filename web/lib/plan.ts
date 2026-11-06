@@ -142,7 +142,7 @@ export const nextSteps: NextStep[] = [
     id: "hold",
     title: "Hold on Arc",
     body: "Land it as a stablecoin or cirBTC, swapped where the liquidity is, or keep what you moved.",
-    verb: "hold it as",
+    verb: "hold",
   },
   {
     id: "pool",

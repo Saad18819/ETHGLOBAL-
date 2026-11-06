@@ -70,18 +70,18 @@
   font-weight: 600;
 }
 
-/* The chart takes three quarters of the card, the legend the rest. */
+/* A fixed donut and a one-line-per-entry legend, so six entries fit without growing the card. */
 .cardBody {
   display: grid;
-  grid-template-columns: 3fr 2fr;
-  gap: 12px;
+  grid-template-columns: 120px minmax(0, 1fr);
+  gap: 16px;
   align-items: center;
 }
 
 .ring {
   display: block;
   width: 100%;
-  max-width: 150px;
+  max-width: 120px;
   aspect-ratio: 1;
   margin: 0 auto;
   overflow: visible;
@@ -116,18 +116,15 @@
   margin: 0;
   padding: 0;
   list-style: none;
-  font-size: 14px;
+  font-size: 13px;
 }
 
 .legend li {
   display: grid;
-  grid-template-columns: 10px minmax(0, 1fr);
-  grid-template-areas:
-    "swatch label"
-    ". value";
+  grid-template-columns: 10px minmax(0, 1fr) auto;
   column-gap: 8px;
-  align-items: start;
-  padding: 5px 6px;
+  align-items: center;
+  padding: 3px 6px;
   border-radius: 6px;
 }
 
@@ -136,20 +133,18 @@
 }
 
 .swatch {
-  grid-area: swatch;
-  margin-top: 4px;
   width: 10px;
   height: 10px;
   border-radius: 3px;
 }
 
 .legendLabel {
-  grid-area: label;
-  line-height: 1.25;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 .legendValue {
-  grid-area: value;
   color: var(--muted);
   font-size: 13px;
   font-variant-numeric: tabular-nums;

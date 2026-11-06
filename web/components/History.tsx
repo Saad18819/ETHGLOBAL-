@@ -53,7 +53,8 @@ type Row = {
 /// purpose taken from what the wallet did next.
 export function History() {
   const { address } = useConnection();
-  const entries = useHistory(address);
+  // Failed moves moved nothing, so they are not shown (including ones saved before this rule).
+  const entries = useHistory(address).filter((entry) => entry.status !== "failed");
   const activity = useQuery({
     queryKey: ["activity", address],
     enabled: Boolean(address),
