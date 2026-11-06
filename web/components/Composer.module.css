@@ -90,7 +90,7 @@
 @media (max-width: 960px) {
   .layout {
     grid-template-columns: 1fr;
-    gap: 48px;
-    padding: 40px 16px 72px;
+    gap: 24px;
+    padding: 24px 16px 72px;
   }
 }
