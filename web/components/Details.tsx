@@ -300,7 +300,7 @@ function loopRows(plan: Plan, valueUsd: number, markets?: Markets): Row[] {
       ? ([
           [
             "On Arc mainnet",
-            `borrow at ${percent(main.borrowApy)}, ${usd(main.liquidity)} available; the loop costs about ${(valueUsd * (leverage - 1) * main.borrowApy).toFixed(2)} USDC a year there`,
+            `borrow at ${percent(main.borrowApy)}, ${usd(main.liquidity)} available; the loan costs about ${(valueUsd * (leverage - 1) * main.borrowApy).toFixed(2)} USDC a year there`,
           ],
         ] as Row[])
       : []),

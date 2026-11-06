@@ -80,7 +80,7 @@ export function describe(plan: Plan): string {
     hold: `held it as ${plan.hold}`,
     pool: `added it to the ${plan.pool} pool on Uniswap`,
     lend: "lent it on Morpho",
-    loop: `looped cirBTC to ${plan.leverage}x on Morpho`,
+    loop: `leveraged cirBTC to ${plan.leverage}x on Morpho`,
   };
   return `${moved}, and then ${purpose[plan.next]}`;
 }

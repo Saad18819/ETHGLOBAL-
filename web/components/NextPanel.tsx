@@ -3,6 +3,7 @@
 import styles from "./NextPanel.module.css";
 import { feeApr, percent, usd, type Markets } from "@/lib/markets";
 import { protocolOf, protocols, swatchStyle } from "@/lib/brand";
+import { protocolIcon } from "@/lib/icons";
 import { nextSteps, type NextId, type Plan } from "@/lib/plan";
 
 /// One headline number per option, from Arc mainnet where there is real activity, so the choice is not made blind.
@@ -61,7 +62,7 @@ export function NextPanel({
               >
                 <span className={styles.cardHead}>
                   <span className={styles.cardTitle}>{step.title}</span>
-                  <span className={styles.tag}>{protocol.name}</span>
+                  <img className={styles.logo} src={protocolIcon[protocolOf[step.id]]} alt={protocol.name} title={protocol.name} width={20} height={20} />
                 </span>
                 <span className={styles.cardBody}>{step.body}</span>
                 {stat && <span className={styles.stat}>{stat}</span>}

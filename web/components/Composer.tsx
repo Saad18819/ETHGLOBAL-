@@ -46,7 +46,7 @@ const outcomes: Record<NextId, string> = {
   hold: "Holding on Arc",
   pool: "Position minted",
   lend: "Lending on Morpho",
-  loop: "Looped",
+  loop: "Leveraged",
 };
 
 export function Composer({

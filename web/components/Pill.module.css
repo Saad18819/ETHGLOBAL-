@@ -161,7 +161,7 @@ button.pill:hover {
 .option {
   display: flex;
   justify-content: space-between;
-  align-items: baseline;
+  align-items: center;
   gap: 16px;
   width: 100%;
   padding: 9px 10px;
@@ -178,6 +178,19 @@ button.pill:hover {
 
 .option:disabled {
   color: var(--faint);
+}
+
+.optionLabel {
+  display: inline-flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.icon {
+  flex: none;
+  width: 24px;
+  height: 24px;
+  border-radius: 50%;
 }
 
 .optionHint {

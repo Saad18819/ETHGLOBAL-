@@ -26,7 +26,7 @@ const inferred: Record<Purpose, string> = {
   hold: "held it on Arc",
   pool: "added it to a Uniswap pool on Arc",
   lend: "lent it on Morpho",
-  loop: "looped it on Morpho",
+  loop: "leveraged it on Morpho",
   back: "sent it back from Arc",
 };
 

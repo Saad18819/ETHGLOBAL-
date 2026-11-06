@@ -12,6 +12,8 @@ export type Option<T extends string> = {
   label: string;
   hint?: string;
   disabled?: boolean;
+  /// A logo shown next to the label in the menu only; the sentence itself stays text.
+  icon?: string;
 };
 
 /// A free numeric value next to the presets, clamped to [min, max].
@@ -89,7 +91,10 @@ export function Select<T extends string>({
                   setOpen(false);
                 }}
               >
-                <span>{option.label}</span>
+                <span className={styles.optionLabel}>
+                  {option.icon && <img className={styles.icon} src={option.icon} alt="" width={24} height={24} />}
+                  {option.label}
+                </span>
                 {option.hint && <span className={styles.optionHint}>{option.hint}</span>}
               </button>
             </li>
