@@ -1,7 +1,7 @@
 "use client";
 
 import styles from "./NextPanel.module.css";
-import { percent, usd, type Markets } from "@/lib/markets";
+import { feeApr, percent, usd, type Markets } from "@/lib/markets";
 import { nextSteps, type NextId, type Plan } from "@/lib/plan";
 
 /// One headline number per option, so the choice is not made blind.
@@ -17,7 +17,7 @@ function headline(id: NextId, markets: Markets | undefined, poolDepth: number | 
       return market && `Borrow at ${percent(market.borrowApy, 3)}, LLTV ${percent(market.lltv, 0)}`;
     }
     case "pool":
-      return poolDepth === undefined ? undefined : `0.05% fee tier, ${usd(poolDepth)} in range`;
+      return poolDepth === undefined ? undefined : `${percent(feeApr(markets.pool.volume7d, 0.0005, poolDepth))} fee APR`;
     case "hold":
       return `EURC ${usd(markets.prices.EURC)}, BTC ${usd(markets.prices.cirBTC)}`;
     default:
@@ -41,7 +41,6 @@ export function NextPanel({
       <h2 className={styles.title}>What&apos;s next</h2>
       <ul className={styles.list}>
         {nextSteps.map((step) => {
-          const blocked = step.blocked(plan);
           const stat = headline(step.id, markets, poolDepth);
           return (
             <li key={step.id}>
@@ -49,15 +48,13 @@ export function NextPanel({
                 type="button"
                 className={styles.card}
                 data-active={plan.next === step.id}
-                disabled={Boolean(blocked)}
                 onClick={() => onPick(step.id)}
               >
                 <span className={styles.cardHead}>
                   <span className={styles.cardTitle}>{step.title}</span>
-                  {stat && !blocked && <span className={styles.stat}>{stat}</span>}
+                  {stat && <span className={styles.stat}>{stat}</span>}
                 </span>
                 <span className={styles.cardBody}>{step.body}</span>
-                {blocked && <span className={styles.note}>{blocked}</span>}
               </button>
             </li>
           );

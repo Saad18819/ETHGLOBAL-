@@ -29,6 +29,8 @@ export type Markets = {
   vaults: Vault[];
   markets: Market[];
   prices: Record<AssetId, number>;
+  /// USDC/EURC pool on Arc, last 7 days.
+  pool: { volume7d: number; swaps7d: number };
   asOf: string;
 };
 
@@ -53,3 +55,7 @@ export function usd(value: number) {
   if (value >= 1e3) return `$${(value / 1e3).toFixed(1)}k`;
   return `$${value.toFixed(2)}`;
 }
+
+/// Fee APR of a pool from a week of volume: fees earned over the in-range liquidity, annualised.
+export const feeApr = (volume7d: number, feeTier: number, depth: number) =>
+  depth > 0 ? (volume7d * feeTier * 52) / depth : 0;

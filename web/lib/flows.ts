@@ -1,5 +1,6 @@
 import {
   encodeAbiParameters,
+  getAbiItem,
   encodeFunctionData,
   formatUnits,
   isAddress,
@@ -28,6 +29,7 @@ import { config, type ChainId } from "./config";
 import { arc, erc20Abi, memoAbi, routerAbi } from "./contracts";
 import { assets, type AssetId, type Plan } from "./plan";
 import { MAX_ROUNDS, ROUND_SHARE } from "./loop";
+import { fullRange, mintPosition } from "./positions";
 import { rangeTicks } from "./quote";
 
 export const Action = { Pay: 0, Deposit: 1, Earn: 2, Provide: 3 } as const;
@@ -62,48 +64,71 @@ export type Context = {
   minOut?: bigint;
   /// Current tick of the USDC/EURC pool, for LP ranges.
   poolTick?: number;
+  /// EURC per USDC on the pool, for price limits.
+  rate?: number;
   invoiceId?: Hex;
   replyTo?: Address;
+  /// USDC/EURC pool state on Arc, for wallet-side liquidity.
+  pool?: { tick: number; sqrtPrice: number };
 };
 
-/// What the settlement contract on Arc does once the USDC is there.
-export function settlementAction({ plan, recipient, minOut = 0n, poolTick = 0 }: Context) {
+const none = { limit: 0n, data: "0x" as Hex };
+const units = (value: number) => BigInt(Math.floor(value * 1e6));
+
+/// What the settlement contract on Arc does once the USDC is there, with the price bounds it enforces.
+export function settlementAction({ plan, recipient, minOut = 0n, poolTick = 0, rate }: Context) {
+  const keep = 1 - Number(plan.slippage) / 100;
   switch (plan.next) {
-    case "pay":
-      return {
-        action: Action.Pay,
-        recipient,
-        token: plan.payToken === "EURC" ? arc.eurc : arc.usdc,
-        amount: parseUnits(plan.payAmount, 6),
-        data: "0x" as Hex,
-      };
+    case "pay": {
+      const amount = Number(plan.payAmount);
+      if (plan.payToken !== "EURC") {
+        return { ...none, action: Action.Pay, recipient, token: arc.usdc, amount: units(amount) };
+      }
+      if (!rate) throw new Error("Pool price is not loaded yet");
+      // The most USDC the exact EURC payment may cost.
+      return { ...none, action: Action.Pay, recipient, token: arc.eurc, amount: units(amount), limit: units(amount / rate / keep) + 1n };
+    }
     case "hold":
-      return { action: Action.Deposit, recipient, token: arc.eurc, amount: minOut, data: "0x" as Hex };
+      return { ...none, action: Action.Deposit, recipient, token: arc.eurc, amount: minOut };
     case "pool": {
+      if (!rate) throw new Error("Pool price is not loaded yet");
       const data =
         plan.range === "full"
           ? ("0x" as Hex)
           : encodeAbiParameters([{ type: "int24" }, { type: "int24" }], rangeTicks(poolTick, Number(plan.range)));
-      return { action: Action.Provide, recipient, token: arc.eurc, amount: 1n, data };
+      // The least EURC the half that is swapped must return.
+      return { action: Action.Provide, recipient, token: arc.eurc, amount: 1n, limit: units((Number(plan.amount) / 2) * rate * keep), data };
     }
     case "lend":
-      return { action: Action.Earn, recipient, token: (plan.vault || arc.morphoVault) as Address, amount: 0n, data: "0x" as Hex };
+      return { ...none, action: Action.Earn, recipient, token: (plan.vault || arc.morphoVault) as Address, amount: 0n };
     default:
-      return { action: Action.Deposit, recipient, token: arc.usdc, amount: 0n, data: "0x" as Hex };
+      return { ...none, action: Action.Deposit, recipient, token: arc.usdc, amount: 0n };
   }
 }
 
 export function buildIntent(context: Context) {
+  // A fast transfer lands in about a minute, a standard one in about 20; past this the order refunds.
+  const window = context.plan.speed === "fast" ? 3600 : 3 * 3600;
   return {
     id: zeroHash,
     payer: zeroAddress,
     ...settlementAction(context),
+    deadline: BigInt(Math.floor(Date.now() / 1000) + window),
+    refundTo: zeroAddress,
     invoiceId: context.invoiceId ?? zeroHash,
     replyTo: context.replyTo ?? zeroAddress,
   } as const;
 }
 
-export type RouterResult = { id: Hex; txHash: Hex; sourceChainId: number; explorer: string };
+type IntentValue = ReturnType<typeof buildIntent>;
+
+/// Orders on Arc are keyed by the hash of the whole intent, as the router fills it in.
+export function orderKey(intent: IntentValue, id: Hex, payer: Address): Hex {
+  const send = getAbiItem({ abi: routerAbi, name: "send" });
+  return keccak256(encodeAbiParameters([send.inputs[0]], [{ ...intent, id, payer }]));
+}
+
+export type RouterResult = { key: Hex; txHash: Hex; sourceChainId: number; explorer: string };
 
 /// USDC from a chain with a CCIP lane: CCTP carries the money, CCIP carries the instruction.
 export async function sendThroughRouter(context: Context, onStep: (label: string) => void): Promise<RouterResult> {
@@ -163,11 +188,17 @@ export async function sendThroughRouter(context: Context, onStep: (label: string
   onStep(`Waiting for ${source.label}`);
   const receipt = await waitForTransactionReceipt(config, { chainId, hash: txHash });
   const [sent] = parseEventLogs({ abi: routerAbi, eventName: "Sent", logs: receipt.logs });
-  return { id: sent.args.id, txHash, sourceChainId: chainId, explorer: router.explorer };
+  return { key: orderKey(intent, sent.args.id, context.account), txHash, sourceChainId: chainId, explorer: router.explorer };
 }
 
-const arcTokens: Record<AssetId, Address> = { EURC: arc.eurc, WETH: arc.weth, cirBTC: arc.cirbtc, USDC: arc.usdc };
-const kitTokens: Record<AssetId, string> = { EURC: "EURC", WETH: "wETH", cirBTC: "cirBTC", USDC: "USDC" };
+const arcTokens: Record<AssetId, Address> = {
+  USDC: arc.usdc,
+  EURC: arc.eurc,
+  ETH: arc.weth,
+  WETH: arc.weth,
+  cirBTC: arc.cirbtc,
+};
+const kitTokens: Record<AssetId, string> = { USDC: "USDC", EURC: "EURC", ETH: "wETH", WETH: "wETH", cirBTC: "cirBTC" };
 
 type Step = { name: string; explorerUrl?: string };
 export type WalletResult = { steps: Step[] };
@@ -181,12 +212,10 @@ async function arcBalance(token: Address, account: Address) {
 
 const tx = (hash?: string) => (hash ? `${arc.explorer}/tx/${hash}` : undefined);
 
-/// Bridges with Bridge Kit, then finishes on Arc from the user's wallet with Circle kits.
-export async function sendThroughWallet(
-  context: Context & { cirbtcPrice?: number },
-  onStep: (label: string) => void,
-): Promise<WalletResult> {
-  const { plan, account } = context;
+/// Bridges with Bridge Kit, then finishes on Arc from the user's wallet. Whatever arrived is converted
+/// into what the action needs with Circle Swap; liquidity goes into the Uniswap pool from the wallet.
+export async function sendThroughWallet(context: Context, onStep: (label: string) => void): Promise<WalletResult> {
+  const { plan, account, recipient } = context;
   const provider = (window as { ethereum?: unknown }).ethereum;
   if (!provider) throw new Error("No browser wallet found");
 
@@ -198,15 +227,15 @@ export async function sendThroughWallet(
   const kit = new AppKit();
   const steps: Step[] = [];
 
-  const token = arcTokens[plan.asset];
-  const before = await arcBalance(token, account);
+  const asset = plan.asset;
+  const before = await arcBalance(arcTokens[asset], account);
 
-  onStep(`Bridging ${plan.asset} from ${sources[plan.from].label} with Bridge Kit`);
+  onStep(`Bridging ${asset} from ${sources[plan.from].label} with Bridge Kit`);
   let bridged = await kit.bridge({
     from: { adapter, chain: sources[plan.from].kitChain as never },
     to: { adapter, chain: "Arc_Testnet" as never },
     amount: plan.amount,
-    token: kitTokens[plan.asset] as never,
+    token: kitTokens[asset] as never,
     config: { transferSpeed: plan.speed === "fast" ? "FAST" : "SLOW" },
   });
   if (bridged.state === "error") {
@@ -218,96 +247,107 @@ export async function sendThroughWallet(
     steps.push({ name: step.name, explorerUrl: "explorerUrl" in step ? (step.explorerUrl as string) : undefined });
   }
 
-  const arrived = (await arcBalance(token, account)) - before;
-  const arrivedText = formatUnits(arrived, assets[plan.asset].decimals);
-  const from = { adapter, chain: "Arc_Testnet" as const };
-  const slippageBps = Math.round(Number(plan.slippage) * 100);
-
+  const arrived = (await arcBalance(arcTokens[asset], account)) - before;
   await switchChain(config, { chainId: arc.chainId });
 
-  if (plan.next === "pay") {
-    onStep("Paying on Arc");
-    const hash = await writeContract(config, {
-      chainId: arc.chainId,
-      address: arc.memo,
-      abi: memoAbi,
-      functionName: "memo",
-      args: [
-        token,
-        encodeFunctionData({
-          abi: erc20Abi,
-          functionName: "transfer",
-          args: [context.recipient, parseUnits(plan.payAmount, assets[plan.asset].decimals)],
-        }),
-        context.invoiceId ?? keccak256(toHex(`${account}${Date.now()}`)),
-        stringToHex("andthen"),
-      ],
+  const swap = async (from: AssetId, to: AssetId, amount: bigint): Promise<bigint> => {
+    if (from === to || amount === 0n) return amount;
+    onStep(`Swapping ${from} into ${to} with Circle Swap`);
+    const toBefore = await arcBalance(arcTokens[to], account);
+    const result = await kit.swap({
+      from: { adapter, chain: "Arc_Testnet" },
+      tokenIn: kitTokens[from] as never,
+      tokenOut: kitTokens[to] as never,
+      amountIn: formatUnits(amount, assets[from].decimals),
+      config: { slippageBps: Math.round(Number(plan.slippage) * 100) },
     });
-    await waitForTransactionReceipt(config, { chainId: arc.chainId, hash });
-    steps.push({ name: `Paid ${plan.recipient}`, explorerUrl: tx(hash) });
-  }
+    const received = (await arcBalance(arcTokens[to], account)) - toBefore;
+    steps.push({ name: `Swapped ${from} into ${formatUnits(received, assets[to].decimals)} ${to}`, explorerUrl: tx(result.txHash) });
+    return received;
+  };
 
-  if (plan.next === "hold") {
-    onStep(`Swapping into ${plan.hold} with Circle Swap`);
-    const swapped = await kit.swap({
-      from,
-      tokenIn: kitTokens[plan.asset] as never,
-      tokenOut: plan.hold as never,
-      amountIn: arrivedText,
-      config: { slippageBps },
-    });
-    steps.push({ name: `Swapped into ${plan.hold}`, explorerUrl: tx(swapped.txHash) });
-    await sendOn(plan.hold === "EURC" ? arc.eurc : arc.cirbtc, account, context.recipient, steps);
-  }
-
-  if (plan.next === "keep") await sendOn(token, account, context.recipient, steps);
-
-  if (plan.next === "lend") {
-    onStep("Depositing into Morpho with Circle Earn");
-    const deposit = await kit.earn.deposit({
-      from,
-      vaultAddress: plan.vault || arc.morphoVault,
-      amount: arrivedText,
-    });
-    steps.push({ name: "Lending on Morpho", explorerUrl: tx("txHash" in deposit ? String(deposit.txHash) : undefined) });
-  }
-
-  if (plan.next === "loop") {
-    let collateral = arrivedText;
-    if (plan.asset !== "cirBTC") {
-      onStep("Buying cirBTC with Circle Swap");
-      const btcBefore = await arcBalance(arc.cirbtc, account);
-      const swapped = await kit.swap({
-        from,
-        tokenIn: kitTokens[plan.asset] as never,
-        tokenOut: "cirBTC" as never,
-        amountIn: arrivedText,
-        config: { slippageBps },
+  switch (plan.next) {
+    case "pay": {
+      const token = plan.payToken;
+      await swap(asset, token, arrived);
+      onStep("Paying on Arc");
+      const hash = await writeContract(config, {
+        chainId: arc.chainId,
+        address: arc.memo,
+        abi: memoAbi,
+        functionName: "memo",
+        args: [
+          arcTokens[token],
+          encodeFunctionData({
+            abi: erc20Abi,
+            functionName: "transfer",
+            args: [recipient, parseUnits(plan.payAmount, assets[token].decimals)],
+          }),
+          context.invoiceId ?? keccak256(toHex(`${account}${Date.now()}`)),
+          stringToHex("andthen"),
+        ],
       });
-      collateral = formatUnits((await arcBalance(arc.cirbtc, account)) - btcBefore, 8);
-      steps.push({ name: `Bought ${collateral} cirBTC`, explorerUrl: tx(swapped.txHash) });
+      await waitForTransactionReceipt(config, { chainId: arc.chainId, hash });
+      steps.push({ name: `Paid ${plan.recipient} ${plan.payAmount} ${token}`, explorerUrl: tx(hash) });
+      break;
     }
-    steps.push(...(await loop(kit, adapter, account, plan, collateral, slippageBps, onStep)));
+    case "hold": {
+      const held = await swap(asset, plan.hold, arrived);
+      await sendOn(arcTokens[plan.hold], held, account, recipient, steps);
+      break;
+    }
+    case "keep":
+      await sendOn(arcTokens[asset], arrived, account, recipient, steps);
+      break;
+    case "lend": {
+      const usdc = await swap(asset, "USDC", arrived);
+      onStep("Depositing into Morpho with Circle Earn");
+      const deposit = await kit.earn.deposit({
+        from: { adapter, chain: "Arc_Testnet" },
+        vaultAddress: plan.vault || arc.morphoVault,
+        amount: formatUnits(usdc, 6),
+      });
+      steps.push({ name: "Lending on Morpho", explorerUrl: tx("txHash" in deposit ? String(deposit.txHash) : undefined) });
+      break;
+    }
+    case "pool": {
+      // Half of the value on each side of the USDC/EURC pool.
+      const half = arrived / 2n;
+      const usdc = asset === "EURC" ? await swap("EURC", "USDC", half) : await swap(asset, "USDC", asset === "USDC" ? arrived - half : half);
+      const eurc = asset === "USDC" ? await swap("USDC", "EURC", half) : await swap(asset, "EURC", arrived - half);
+      const pool = context.pool;
+      if (!pool) throw new Error("Pool price is not loaded yet");
+      const range = plan.range === "full" ? fullRange() : rangeTicks(pool.tick, Number(plan.range));
+      const minted = await mintPosition(
+        { account, owner: recipient, usdc, eurc, sqrtPrice: pool.sqrtPrice, range },
+        onStep,
+      );
+      steps.push({ name: `Uniswap position #${minted.tokenId} minted`, explorerUrl: tx(minted.hash) });
+      break;
+    }
+    case "loop": {
+      const btc = await swap(asset, "cirBTC", arrived);
+      steps.push(...(await loop(kit, adapter, account, plan, formatUnits(btc, 8), onStep)));
+      break;
+    }
   }
 
   return { steps };
 }
 
-/// Moves what arrived to someone else when the user asked for it.
-async function sendOn(token: Address, account: Address, recipient: Address, steps: Step[]) {
-  if (recipient.toLowerCase() === account.toLowerCase()) return;
-  const balance = await arcBalance(token, account);
+/// Moves what this run produced to someone else, when the user asked for it.
+async function sendOn(token: Address, amount: bigint, account: Address, recipient: Address, steps: Step[]) {
+  if (recipient.toLowerCase() === account.toLowerCase() || amount === 0n) return;
   const hash = await writeContract(config, {
     chainId: arc.chainId,
     address: token,
     abi: erc20Abi,
     functionName: "transfer",
-    args: [recipient, balance],
+    args: [recipient, amount],
   });
   await waitForTransactionReceipt(config, { chainId: arc.chainId, hash });
   steps.push({ name: "Sent on", explorerUrl: tx(hash) });
 }
-
 
 /// Loops on the Morpho cirBTC/USDC market through Circle Borrow: borrow USDC, buy cirBTC with Circle Swap,
 /// add it to the loan, until the position reaches the target leverage.
@@ -317,9 +357,9 @@ async function loop(
   account: Address,
   plan: Plan,
   collateral: string,
-  slippageBps: number,
   onStep: (label: string) => void,
 ): Promise<Step[]> {
+  const slippageBps = Math.round(Number(plan.slippage) * 100);
   const from = { adapter, chain: "Arc_Testnet" as const };
   const steps: Step[] = [];
   const quote = await kit.borrow.getMaxBorrow({ chain: "Arc_Testnet", marketId: arc.cirbtcMarket, collateralAmount: collateral });

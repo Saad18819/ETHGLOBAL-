@@ -13,9 +13,9 @@ const inFlight = new Map<Hex, Promise<Response>>();
 /// Finishes the CCTP leg: waits for Circle's attestation of the burn on the source chain, then mints on Arc
 /// through the settlement contract. Safe to call repeatedly; the client polls it.
 export async function POST(request: Request) {
-  const { txHash, id, domain } = (await request.json()) as { txHash?: string; id?: string; domain?: number };
-  if (!isHex(txHash) || !isHex(id) || !Number.isInteger(domain)) {
-    return Response.json({ error: "txHash, id and domain required" }, { status: 400 });
+  const { txHash, key, domain } = (await request.json()) as { txHash?: string; key?: string; domain?: number };
+  if (!isHex(txHash) || !isHex(key) || !Number.isInteger(domain)) {
+    return Response.json({ error: "txHash, key and domain required" }, { status: 400 });
   }
   if (!deployed.settlement || !process.env.RELAYER_PRIVATE_KEY) {
     return Response.json({ error: "relayer not configured" }, { status: 500 });
@@ -24,7 +24,7 @@ export async function POST(request: Request) {
   const running = inFlight.get(txHash);
   if (running) return (await running).clone();
 
-  const task = relay(txHash, id, domain!);
+  const task = relay(txHash, key, domain!);
   inFlight.set(txHash, task);
   try {
     return (await task).clone();
@@ -33,14 +33,14 @@ export async function POST(request: Request) {
   }
 }
 
-async function relay(txHash: Hex, id: Hex, domain: number): Promise<Response> {
+async function relay(txHash: Hex, key: Hex, domain: number): Promise<Response> {
   const settlement = deployed.settlement!;
 
   const order = await publicClient.readContract({
     address: settlement,
     abi: settlementAbi,
     functionName: "getOrder",
-    args: [id],
+    args: [key],
   });
   if (order.funded > 0n) return Response.json({ state: "done" });
 

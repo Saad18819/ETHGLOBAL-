@@ -14,7 +14,7 @@ const OPEN = 0;
 const SETTLED = 1;
 
 export function RouterTracker({
-  id,
+  orderKey,
   txHash,
   explorer,
   source,
@@ -22,7 +22,7 @@ export function RouterTracker({
   outcome,
   invoiceId,
 }: {
-  id: Hex;
+  orderKey: Hex;
   txHash: Hex;
   explorer: string;
   source: string;
@@ -31,14 +31,14 @@ export function RouterTracker({
   invoiceId?: Hex;
 }) {
   const order = useQuery({
-    queryKey: ["order", id],
+    queryKey: ["order", orderKey],
     queryFn: () =>
       readContract(config, {
         chainId: arc.chainId,
         address: deployed.settlement!,
         abi: settlementAbi,
         functionName: "getOrder",
-        args: [id],
+        args: [orderKey],
       }),
     refetchInterval: (query) => (query.state.data && query.state.data.status !== OPEN ? false : 3000),
   });
@@ -50,7 +50,7 @@ export function RouterTracker({
       const response = await fetch("/api/relay", {
         method: "POST",
         headers: { "content-type": "application/json" },
-        body: JSON.stringify({ txHash, id, domain }),
+        body: JSON.stringify({ txHash, key: orderKey, domain }),
       });
       return (await response.json()) as { state?: string; hash?: Hex; error?: string };
     },
@@ -75,7 +75,7 @@ export function RouterTracker({
     refetchInterval: (query) => (query.state.data ? false : 5000),
   });
 
-  const intentArrived = Boolean(order.data && order.data.intent.id !== `0x${"0".repeat(64)}`);
+  const intentArrived = Boolean(order.data?.hasIntent);
   const steps: { label: string; detail?: string; state: State; href?: string }[] = [
     {
       label: `Sent from ${source}`,
