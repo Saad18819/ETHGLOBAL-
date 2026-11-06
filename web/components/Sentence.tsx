@@ -33,8 +33,6 @@ export function Sentence({
   lltv,
   holdings,
   locked = false,
-  maxPay,
-  neededAmount,
 }: {
   plan: Plan;
   onChange: (plan: Plan) => void;
@@ -42,10 +40,6 @@ export function Sentence({
   lltv?: number;
   holdings?: Holding[];
   locked?: boolean;
-  /// The most the moved amount can pay, in the pay token.
-  maxPay?: number;
-  /// How much of the asset covers the payment.
-  neededAmount?: number;
 }) {
   const totalOf = (asset: AssetId) =>
     holdings?.filter((h) => h.asset === asset).reduce((sum, h) => sum + Number(h.amount), 0) ?? 0;
@@ -64,15 +58,14 @@ export function Sentence({
         value={plan.amount}
         onChange={(amount) => set({ amount })}
         hint={held ? `of ${short(held.amount)}` : undefined}
-        presets={[
-          ...(held
+        presets={
+          held
             ? [
                 { label: "50%", value: spendable(plan.asset, plan.from, held.amount, 0.5) },
                 { label: "max", value: spendable(plan.asset, plan.from, held.amount) },
               ]
-            : []),
-          ...(plan.next === "pay" && neededAmount ? [{ label: "enough", value: roundUp(plan.asset, neededAmount) }] : []),
-        ]}
+            : undefined
+        }
         swatch={token}
       />{" "}
       <Select<AssetId>
@@ -214,8 +207,6 @@ export function Sentence({
                 numeric
                 value={plan.payAmount}
                 onChange={(payAmount) => set({ payAmount })}
-                hint={maxPay !== undefined ? `up to ${short(String(maxPay))}` : undefined}
-                presets={maxPay !== undefined ? [{ label: "max", value: String(Math.floor(maxPay * 100) / 100) }] : undefined}
                 swatch={tokenColor(plan.payToken)}
               />{" "}
               <Select<PayToken>
@@ -240,10 +231,3 @@ function shortAddress(value: string) {
   return /^0x[0-9a-fA-F]{40}$/.test(value) ? `${value.slice(0, 6)}…${value.slice(-4)}` : value;
 }
 
-/// Rounds an amount of the asset up to a sensible number of digits, so it always covers the target.
-function roundUp(asset: AssetId, value: number) {
-  const token = assets[asset]?.token;
-  const digits = Math.min(token?.decimals ?? 6, token?.kind === "btc" ? 6 : token?.kind === "eth" ? 5 : 2);
-  const factor = 10 ** digits;
-  return String(Math.ceil(value * factor) / factor);
-}

@@ -14,12 +14,12 @@ import { Sentence } from "./Sentence";
 import { RouterTracker, Steps } from "./Tracker";
 import { sources } from "@/lib/chains";
 import { arc } from "@/lib/contracts";
-import { cctpFees, resolveRecipient, sendThroughRouter, sendThroughWallet, type RouterResult } from "@/lib/flows";
+import { cctpFees, resolveRecipient, wrapEth, sendThroughRouter, sendThroughWallet, type RouterResult } from "@/lib/flows";
 import { MAX_LEVERAGE } from "@/lib/loop";
 import { spendable, useBalances } from "@/lib/balances";
 import { protocolOf, protocols, swatchStyle } from "@/lib/brand";
 import { useMarkets } from "@/lib/markets";
-import { assets, bridgedAsset, defaultPlan, normalizePlan, routeOf, viaUniswap, type NextId, type Plan } from "@/lib/plan";
+import { assets, bridgedAsset, defaultPlan, wrapsIntoWeth, normalizePlan, routeOf, viaUniswap, type NextId, type Plan } from "@/lib/plan";
 import { quoteToUsdc, swapToUsdc } from "@/lib/uniswap";
 import { marketSqrtPriceX96, poolById, usePoolState, type PoolState } from "@/lib/pools";
 import { usePool } from "@/lib/quote";
@@ -50,8 +50,13 @@ export function Composer({
   const [draft, setDraft] = useState(initialPlan);
   // Until the user edits the sentence, it follows their largest holding.
   const [touched, setTouched] = useState(locked);
+  // For a payment, the side the user typed last drives the other: the amount moved, or what they get.
+  const [anchor, setAnchor] = useState<"source" | "target">(locked ? "target" : "source");
   const setPlan = (next: Plan) => {
     setTouched(true);
+    if (next.payAmount !== plan.payAmount) setAnchor("target");
+    else if (next.amount !== plan.amount) setAnchor("source");
+    // Keep the derived side as shown, so switching anchors starts from what is on screen.
     setDraft(next);
   };
   const [status, setStatus] = useState<string>();
@@ -75,45 +80,54 @@ export function Composer({
       routeOf(base) !== "router" || vault.address.toLowerCase() === arc.morphoVault?.toLowerCase(),
   );
   const vault = vaults.some((v) => v.address === base.vault) ? base.vault : (vaults[0]?.address ?? "");
-  const plan = { ...base, vault };
+  const prices = markets.data?.prices;
+  const unsized = { ...base, vault };
+  // Typed what they get: move enough to cover it at market prices plus a margin; the rest stays in the
+  // wallet on Arc.
+  const sized =
+    unsized.next === "pay" && anchor === "target"
+      ? { ...unsized, amount: amountFor(unsized, prices) ?? unsized.amount }
+      : unsized;
   const lltv = markets.data?.markets.find((m) => m.collateral === "cirBTC")?.lltv;
-  const chosenPool = usePoolState(poolById(plan.pool), markets.data?.prices);
-  const domain = sources[plan.from].cctpDomain;
+  const chosenPool = usePoolState(poolById(sized.pool), markets.data?.prices);
+  const domain = sources[sized.from].cctpDomain;
   const fees = useQuery({ queryKey: ["cctp-fee", domain], queryFn: () => cctpFees(domain), staleTime: 60_000 });
 
-  const uniswap = viaUniswap(plan);
-  const amountIn = parseAmount(plan.amount, assets[plan.asset].decimals);
+  const uniswap = viaUniswap(sized);
+  const amountIn = parseAmount(sized.amount, assets[sized.asset].decimals);
   const sourceQuote = useQuery({
-    queryKey: ["source-quote", plan.asset, plan.from, amountIn.toString(), plan.slippage, markets.data?.prices.ETH],
-    queryFn: () => quoteToUsdc(plan.asset, plan.from, amountIn, Number(plan.slippage), address, markets.data?.prices.ETH),
+    queryKey: ["source-quote", sized.asset, sized.from, amountIn.toString(), sized.slippage, markets.data?.prices[sized.asset]],
+    queryFn: () =>
+      quoteToUsdc(sized.asset, sized.from, amountIn, Number(sized.slippage), address, markets.data?.prices[sized.asset]),
     enabled: uniswap && amountIn > 0n,
     staleTime: 30_000,
     retry: false,
   });
-  const route = routeOf(plan);
+  const route = routeOf(sized);
   // What arrives as USDC when the source leg goes through Uniswap.
   const amount = uniswap
     ? Number(formatUnits(sourceQuote.data?.amountOut ?? 0n, 6))
-    : Number(plan.amount) || 0;
-  const slippage = 1 - Number(plan.slippage) / 100;
+    : Number(sized.amount) || 0;
+  const slippage = 1 - Number(sized.slippage) / 100;
   const swaps =
     uniswap ||
-    (plan.next === "hold" && plan.hold !== bridgedAsset(plan)) ||
-    plan.next === "loop" ||
-    plan.next === "pool" ||
-    plan.next === "lend" ||
-    (plan.next === "pay" && plan.payToken !== plan.asset);
+    (sized.next === "hold" && sized.hold !== bridgedAsset(sized)) ||
+    sized.next === "loop" ||
+    sized.next === "pool" ||
+    sized.next === "lend" ||
+    (sized.next === "pay" && sized.payToken !== sized.asset);
   // What the move is worth on arrival, in USD: the market value, or less when the source swap quotes less.
-  const prices = markets.data?.prices;
-  const marketUsd = (Number(plan.amount) || 0) * (prices?.[plan.asset] ?? NaN);
+  const marketUsd = (Number(sized.amount) || 0) * (prices?.[sized.asset] ?? NaN);
   const arrivingUsd = uniswap ? Math.min(amount, marketUsd) : marketUsd;
   const keep = 0.999 * slippage;
-  const payPrice = prices?.[plan.payToken] ?? NaN;
+  const payPrice = prices?.[sized.payToken] ?? NaN;
   const maxPay = (arrivingUsd * keep) / payPrice;
-  // How much of the asset covers the payment, the same way round.
-  const neededAmount =
-    ((Number(plan.payAmount) || 0) * payPrice) / keep / (prices?.[plan.asset] ?? NaN) *
-    (uniswap && amount > 0 ? Math.max(1, marketUsd / amount) : 1);
+  // Typed the amount moved: they get the most it covers.
+  const plan =
+    sized.next === "pay" && anchor === "source" && Number.isFinite(maxPay) && !(uniswap && !sourceQuote.data)
+      ? { ...sized, payAmount: String(Math.floor(maxPay * 100) / 100) }
+      : sized;
+  const leftover = maxPay - (Number(plan.payAmount) || 0);
   // Until the source swap is quoted, there is nothing to measure the payment against.
   const quoting = uniswap && !sourceQuote.data && !sourceQuote.error;
   const blocker = quoting
@@ -131,7 +145,10 @@ export function Composer({
       const recipient =
         plan.next === "pay" ? await resolveRecipient(plan.recipient) : plan.to ? await resolveRecipient(plan.to) : address;
       let effective = plan;
-      if (uniswap) {
+      if (wrapsIntoWeth(plan.asset, plan.from) && bridgedAsset(plan) === "WETH") {
+        await wrapEth(plan.from, amountIn, setStatus);
+        effective = { ...plan, asset: "WETH" };
+      } else if (uniswap) {
         const { usdc } = await swapToUsdc(
           { account: address, asset: plan.asset, from: plan.from, amountIn, slippage: Number(plan.slippage) },
           setStatus,
@@ -182,8 +199,7 @@ export function Composer({
           vaults={vaults}
           lltv={lltv}
           holdings={balances.data}
-          maxPay={!quoting && Number.isFinite(maxPay) ? maxPay : undefined}
-          neededAmount={Number.isFinite(neededAmount) && neededAmount > 0 ? neededAmount : undefined}
+
           locked={locked}
         />
 
@@ -193,6 +209,7 @@ export function Composer({
           markets={markets.data && { ...markets.data, vaults }}
           pool={pool.data}
           chosenPool={chosenPool.data}
+          leftover={plan.next === "pay" && !quoting && Number.isFinite(leftover) && leftover > 0 ? leftover : undefined}
           fees={fees.data}
           sourceQuote={uniswap ? sourceQuote.data : undefined}
         />
@@ -313,4 +330,18 @@ function liquidityTarget(state: PoolState, prices: Record<string, number> | unde
   const open = marketSqrtPriceX96(state.pair, prices);
   const sqrtPrice = Number(open) / 2 ** 96;
   return { pair: state.pair, tick: Math.floor(Math.log(sqrtPrice * sqrtPrice) / Math.log(1.0001)), sqrtPrice, open };
+}
+
+/// How much of the asset covers a payment at market prices, with room for fees, slippage and price moves:
+/// a little for stablecoins, more for anything that moves. Rounded up so it always covers.
+function amountFor(plan: Plan, prices: Record<string, number> | undefined) {
+  const assetPrice = prices?.[plan.asset];
+  const payPrice = prices?.[plan.payToken];
+  const pay = Number(plan.payAmount);
+  if (!assetPrice || !payPrice || !(pay > 0)) return undefined;
+  const token = assets[plan.asset].token;
+  const margin = token.kind === "stable" ? 1.003 : 1.02;
+  const value = ((pay * payPrice) / assetPrice / (0.999 * (1 - Number(plan.slippage) / 100))) * margin;
+  const digits = Math.min(token.decimals, token.kind === "btc" ? 6 : token.kind === "eth" ? 5 : 2);
+  return String(Math.ceil(value * 10 ** digits) / 10 ** digits);
 }

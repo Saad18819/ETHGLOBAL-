@@ -21,6 +21,7 @@ type Row = [label: string, value: ReactNode];
 const summary = new Set([
   "Arrives",
   "They get",
+  "Stays with you",
   "Lands as",
   "You get about",
   "Price impact",
@@ -45,11 +46,14 @@ export function Details({
   fees,
   sourceQuote,
   chosenPool,
+  leftover,
 }: {
   plan: Plan;
   markets?: Markets;
   pool?: PoolStats;
   chosenPool?: PoolState;
+  /// What stays in the wallet on Arc after an exact payment, in the pay token.
+  leftover?: number;
   fees?: CctpFees;
   sourceQuote?: SourceQuote;
 }) {
@@ -94,6 +98,9 @@ export function Details({
   switch (plan.next) {
     case "pay":
       rows.push(...payRows(plan, pool));
+      if (leftover !== undefined && leftover >= 0.01) {
+        rows.push(["Stays with you", `at least ${leftover.toFixed(2)} ${plan.payToken} in your wallet on Arc`]);
+      }
       break;
     case "hold":
       rows.push(...holdRows(plan, amount * price, markets, pool));

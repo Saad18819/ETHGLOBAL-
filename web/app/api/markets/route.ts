@@ -5,6 +5,7 @@ import { encodeAbiParameters, keccak256, toEventSelector, zeroAddress } from "vi
 import type { Markets } from "@/lib/markets";
 import { poolStats, type PoolSpec } from "@/lib/mainnet";
 import { arc as arcContracts } from "@/lib/contracts";
+import { mainnetTokens, tokens } from "@/lib/tokens";
 
 const kit = new AppKit();
 
@@ -16,11 +17,13 @@ const VAULT_NAMES: Record<string, string> = {
 const TTL = 60_000;
 let cached: { at: number; data: Markets } | undefined;
 
-// Mainnet reference prices; testnet tokens have no market of their own.
-const ETHEREUM_PRICES = {
-  WETH: "0xc02aaa39b223fe8d0a0e5c4f27ead9083c756cc2",
-  cirBTC: "0x2260fac5e5542a773aa44fbcfedf7c193bc2c599",
-} as const;
+// Testnet tokens have no market of their own, so every token is priced from its Ethereum mainnet
+// counterpart: ETH as WETH, cirBTC as WBTC.
+const PRICE_AS: Record<string, string> = { ETH: "WETH", cirBTC: "WBTC" };
+const mainnetAddress = (symbol: string) => {
+  const address = mainnetTokens.find((token) => token.symbol === (PRICE_AS[symbol] ?? symbol))?.sources.ethereum;
+  return address && address !== "native" ? address.toLowerCase() : undefined;
+};
 
 const EXPLORER = "https://explorer.testnet.arc.io/api";
 const POOL_MANAGER = "0x8366a39CC670B4001A1121B8F6A443A643e40951";
@@ -109,7 +112,10 @@ export async function GET() {
     kit.earn.exploreVaults({ chain: arcContracts.kitChain as "Arc_Testnet", pageSize: 100, sortBy: "apy" }),
     kit.borrow.exploreMarkets({ chain: arcContracts.kitChain as "Arc_Testnet" }),
     kit.getTokenRates({ chain: "Arc_Testnet", tokens: ["USDC", "EURC"] }),
-    kit.getTokenRates({ chain: "Ethereum", tokens: ["WETH", "WBTC"] }),
+    kit.getTokenRates({
+      chain: "Ethereum",
+      tokens: [...new Set(tokens.map((token) => mainnetAddress(token.symbol)).filter((a): a is string => Boolean(a)))],
+    }),
     poolVolume().catch(() => ({ volume7d: 0, swaps7d: 0 })),
   ]);
 
@@ -141,11 +147,14 @@ export async function GET() {
       borrowed: Number(market.borrowAssets?.amount ?? 0),
     })),
     prices: {
+      ...Object.fromEntries(
+        tokens.flatMap((token) => {
+          const address = mainnetAddress(token.symbol);
+          return address ? [[token.symbol, price(eth, address)]] : [];
+        }),
+      ),
       USDC: price(arc, "0x3600000000000000000000000000000000000000"),
       EURC: price(arc, "0x89b50855aa3be2f677cd6303cec089b5f319d72a"),
-      ETH: price(eth, ETHEREUM_PRICES.WETH),
-      WETH: price(eth, ETHEREUM_PRICES.WETH),
-      cirBTC: price(eth, ETHEREUM_PRICES.cirBTC),
     },
     pool,
     mainnet: await mainnet({ USDC: 1, EURC: price(arc, "0x89b50855aa3be2f677cd6303cec089b5f319d72a") }).catch(

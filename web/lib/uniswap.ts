@@ -6,7 +6,7 @@ import { config, type ChainId } from "./config";
 import { erc20Abi } from "./contracts";
 import { isTestnet } from "./network";
 import { tokenBySymbol } from "./tokens";
-import { quoteEthToUsdc, swapEthToUsdc } from "./uniswapTestnet";
+import { quoteTestnet, swapTestnet } from "./uniswapTestnet";
 
 /// Swaps on the source chain go through the Uniswap Trading API (via /api/uniswap), routed CLASSIC so the
 /// output lands in the wallet in the same transaction and can be bridged right after. On testnet they go
@@ -58,6 +58,11 @@ const tokenAddress = (asset: string, from: SourceId): Address => {
 
 const usdcOn = (from: SourceId) => tokenAddress("USDC", from);
 
+const testnetTokenIn = (asset: string, from: SourceId) =>
+  asset === "WETH"
+    ? { address: zeroAddress, decimals: 18 }
+    : { address: tokenAddress(asset, from), decimals: tokenBySymbol[asset].decimals };
+
 /// The best CLASSIC route from the asset into USDC on its own chain.
 export async function quoteToUsdc(
   asset: string,
@@ -68,7 +73,7 @@ export async function quoteToUsdc(
   marketPrice?: number,
 ): Promise<SourceQuote> {
   if (isTestnet) {
-    const quote = await quoteEthToUsdc(from, amountIn, marketPrice);
+    const quote = await quoteTestnet(from, testnetTokenIn(asset, from), amountIn, marketPrice);
     if (!quote) throw new Error("no pool has a quote right now");
     return { amountIn, amountOut: quote.amountOut, pools: "v4", deviation: quote.deviation };
   }
@@ -105,9 +110,11 @@ export async function swapToUsdc(
   await switchChain(config, { chainId });
 
   if (isTestnet) {
-    const quote = await quoteEthToUsdc(from, amountIn);
+    // WETH is unwrapped and swapped as ETH, where the pools are.
+    const tokenIn = testnetTokenIn(asset, from);
+    const quote = await quoteTestnet(from, tokenIn, amountIn);
     if (!quote) throw new Error("No Uniswap pool has a quote right now");
-    return swapEthToUsdc({ from, account, amountIn, quote, slippage: slippage / 100, fromWeth: asset === "WETH" }, onStatus);
+    return swapTestnet({ from, account, tokenIn, amountIn, quote, slippage: slippage / 100, fromWeth: asset === "WETH" }, onStatus);
   }
 
   const tokenIn = tokenAddress(asset, from);
