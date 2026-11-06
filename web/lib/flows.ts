@@ -1,6 +1,5 @@
 import {
   encodeAbiParameters,
-  getAbiItem,
   encodeFunctionData,
   formatUnits,
   isAddress,
@@ -33,6 +32,7 @@ import { arc, erc20Abi, memoAbi, routerAbi } from "./contracts";
 import { assets, type AssetId, type Plan } from "./plan";
 import { tokenBySymbol } from "./tokens";
 import { MAX_ROUNDS, ROUND_SHARE } from "./loop";
+import { orderKey } from "./order";
 import type { PoolPair } from "./pools";
 import { fullRange, mintPosition } from "./positions";
 import { rangeTicks } from "./quote";
@@ -130,13 +130,7 @@ export function buildIntent(context: Context) {
   } as const;
 }
 
-type IntentValue = ReturnType<typeof buildIntent>;
-
-/// Orders on Arc are keyed by the hash of the whole intent, as the router fills it in.
-export function orderKey(intent: IntentValue, id: Hex, payer: Address): Hex {
-  const send = getAbiItem({ abi: routerAbi, name: "send" });
-  return keccak256(encodeAbiParameters([send.inputs[0]], [{ ...intent, id, payer }]));
-}
+export { orderKey } from "./order";
 
 export type RouterResult = { key: Hex; txHash: Hex; sourceChainId: number; explorer: string };
 

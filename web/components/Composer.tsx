@@ -45,6 +45,7 @@ export function Composer({
   invoiceId,
   replyTo,
   compact = false,
+  aside,
 }: {
   initialPlan?: Plan;
   locked?: boolean;
@@ -52,6 +53,8 @@ export function Composer({
   replyTo?: Address;
   /// Less room above, for when the composer sits under tabs.
   compact?: boolean;
+  /// Shown in the side column instead of the next steps, such as the invoice on a pay link.
+  aside?: React.ReactNode;
 }) {
   const [draft, setDraft] = useState(initialPlan);
   // Until the user edits the sentence, it follows their largest holding.
@@ -274,17 +277,18 @@ export function Composer({
             : "Cancelled in your wallet. What already arrived is in your wallet on Arc"
           : readable(cause),
       );
-      // A move the wallet declined is not history; anything that moved shows up from the chain.
-      if (!cancelled) {
+      // Only a transfer that left the source chain but did not land is history; a failed move moved
+      // nothing, and anything that did move shows up from the chain.
+      if (cause instanceof StuckTransfer) {
         record(address, {
           purpose: plan.next,
           summary: describe(plan),
-          status: cause instanceof StuckTransfer ? "stuck" : "failed",
+          status: "stuck",
           steps: [],
           error: readable(cause),
-          stuck: cause instanceof StuckTransfer ? { from: cause.from, tx: cause.txHash } : undefined,
+          stuck: { from: cause.from, tx: cause.txHash },
         });
-        if (cause instanceof StuckTransfer) publish({ ...shared, tx: cause.txHash, status: "stuck" });
+        publish({ ...shared, tx: cause.txHash, status: "stuck" });
       }
     } finally {
       setBusy(false);
@@ -382,7 +386,8 @@ export function Composer({
         )}
       </section>
 
-      {!locked && (
+      {aside}
+      {!locked && !aside && (
         <NextPanel
           plan={plan}
           markets={markets.data}
@@ -394,7 +399,6 @@ export function Composer({
   );
 }
 
-/// A round amount to move from a balance, keeping some native ETH for gas.
 /// Whether the result can be sent to someone other than the connected wallet.
 function forwards(plan: Plan, route: ReturnType<typeof routeOf>) {
   if (plan.next === "hold") return true;

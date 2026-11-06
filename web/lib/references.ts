@@ -1,4 +1,4 @@
-import type { PoolPair } from "./pools";
+import type { PoolPair } from "./pairs";
 
 /// Fee APYs for pairs that have no pool on Arc yet, from the same pair on Ethereum mainnet. Read from
 /// DefiLlama's yields API (yields.llama.fi/pools), which tracks every Uniswap pool's fees and liquidity.
