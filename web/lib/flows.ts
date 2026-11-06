@@ -75,6 +75,8 @@ export type Context = {
   rate?: number;
   /// USDC the pool takes for the exact EURC payment, from the Quoter.
   eurcCost?: number;
+  /// EURC the pool gives for the USDC swapped on Arc, from the Quoter.
+  eurcOut?: number;
   invoiceId?: Hex;
   replyTo?: Address;
   /// USDC/EURC pool state on Arc, for wallet-side liquidity.
@@ -84,13 +86,13 @@ export type Context = {
 
 const none = { limit: 0n, data: "0x" as Hex };
 
-/// Room over the quoted cost of an exact EURC payment on Arc. The pool is thin and other moves shift its
-/// price in the minutes before the payment settles; whatever is not spent comes back to the payer.
-export const EURC_PAY_MARGIN = 1.03;
+/// Room around a quoted swap into EURC on Arc. The pool is thin and other moves shift its price in the
+/// minutes before the move settles; whatever a payment does not spend comes back to the payer.
+export const EURC_SWAP_MARGIN = 1.03;
 const units = (value: number) => BigInt(Math.floor(value * 1e6));
 
 /// What the settlement contract on Arc does once the USDC is there, with the price bounds it enforces.
-export function settlementAction({ plan, recipient, minOut = 0n, poolTick = 0, rate, eurcCost }: Context) {
+export function settlementAction({ plan, recipient, minOut = 0n, poolTick = 0, eurcCost, eurcOut }: Context) {
   const keep = 1 - Number(plan.slippage) / 100;
   switch (plan.next) {
     case "pay": {
@@ -100,7 +102,7 @@ export function settlementAction({ plan, recipient, minOut = 0n, poolTick = 0, r
       }
       if (!eurcCost) throw new Error("The EURC price on Arc is not loaded yet");
       // The most USDC the exact EURC payment may cost: the quoted cost with room for the price to move.
-      const limit = units((eurcCost * EURC_PAY_MARGIN) / keep) + 1n;
+      const limit = units((eurcCost * EURC_SWAP_MARGIN) / keep) + 1n;
       return { ...none, action: Action.Pay, recipient, token: arc.eurc, amount: units(amount), limit };
     }
     case "hold":
@@ -109,13 +111,14 @@ export function settlementAction({ plan, recipient, minOut = 0n, poolTick = 0, r
         ? { ...none, action: Action.Deposit, recipient, token: arc.eurc, amount: minOut }
         : { ...none, action: Action.Deposit, recipient, token: arc.usdc, amount: 0n };
     case "pool": {
-      if (!rate) throw new Error("Pool price is not loaded yet");
+      if (!eurcOut) throw new Error("The EURC price on Arc is not loaded yet");
       const data =
         plan.range === "full"
           ? ("0x" as Hex)
           : encodeAbiParameters([{ type: "int24" }, { type: "int24" }], rangeTicks(poolTick, Number(plan.range)));
       // The least EURC the half that is swapped must return.
-      return { action: Action.Provide, recipient, token: arc.eurc, amount: 1n, limit: units((Number(plan.amount) / 2) * rate * keep), data };
+      const limit = units((eurcOut * keep) / EURC_SWAP_MARGIN);
+      return { action: Action.Provide, recipient, token: arc.eurc, amount: 1n, limit, data };
     }
     case "lend":
       return { ...none, action: Action.Earn, recipient, token: (plan.vault || arc.morphoVault) as Address, amount: 0n };

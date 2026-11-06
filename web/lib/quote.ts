@@ -43,7 +43,15 @@ export function usePool() {
 const quoter = "0x8Dc178eFB8111BB0973Dd9d722ebeFF267c98F94";
 const quoterAbi = parseAbi([
   "function quoteExactOutputSingle(((address,address,uint24,int24,address) poolKey, bool zeroForOne, uint128 exactAmount, bytes hookData) params) view returns (uint256 amountIn, uint256 gasEstimate)",
+  "function quoteExactInputSingle(((address,address,uint24,int24,address) poolKey, bool zeroForOne, uint128 exactAmount, bytes hookData) params) view returns (uint256 amountOut, uint256 gasEstimate)",
 ]);
+
+const usdcToEurc = (exactAmount: bigint) => ({
+  poolKey: [arc.usdc, arc.eurc, eurcPool.fee, eurcPool.tickSpacing, zeroAddress] as const,
+  zeroForOne: true,
+  exactAmount,
+  hookData: "0x" as const,
+});
 
 /// USDC the pool takes for exactly `eurc` out, quoted by simulating the swap: fee and price impact
 /// across every tick included.
@@ -53,16 +61,33 @@ export async function usdcForEurc(eurc: bigint): Promise<bigint> {
     address: quoter,
     abi: quoterAbi,
     functionName: "quoteExactOutputSingle",
-    args: [
-      {
-        poolKey: [arc.usdc, arc.eurc, eurcPool.fee, eurcPool.tickSpacing, zeroAddress],
-        zeroForOne: true,
-        exactAmount: eurc,
-        hookData: "0x",
-      },
-    ],
+    args: [usdcToEurc(eurc)],
   });
   return amountIn;
+}
+
+/// EURC the pool gives for exactly `usdc` in, quoted by simulating the swap.
+export async function eurcForUsdc(usdc: bigint): Promise<bigint> {
+  const [amountOut] = await readContract(config, {
+    chainId: arc.chainId,
+    address: quoter,
+    abi: quoterAbi,
+    functionName: "quoteExactInputSingle",
+    args: [usdcToEurc(usdc)],
+  });
+  return amountOut;
+}
+
+/// What swapping `usdc` into EURC on the pool returns, kept fresh while the user looks at it.
+export function useEurcOut(usdc: number, enabled: boolean) {
+  const amount = usdc > 0 ? BigInt(Math.floor(usdc * 1e6)) : 0n;
+  return useQuery({
+    queryKey: ["eurc-out", amount.toString()],
+    queryFn: async () => Number(await eurcForUsdc(amount)) / 1e6,
+    enabled: enabled && amount > 0n,
+    refetchInterval: 15_000,
+    retry: false,
+  });
 }
 
 /// What an exact EURC payment costs in USDC on the pool, kept fresh while the user looks at it.

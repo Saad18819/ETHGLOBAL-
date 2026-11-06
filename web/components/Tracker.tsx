@@ -139,8 +139,9 @@ export function RouterTracker({
   const report = useEffectEvent(onProgress);
   useEffect(() => report(phase, failed), [phase, failed]);
 
+  // A failure already shows on the progress row and next to the button.
   const note = failed
-    ? "Could not finish, refunded on Arc"
+    ? undefined
     : (relay.data?.error ??
       (delivering
         ? "Confirm the delivery on Arc in your wallet"
@@ -154,7 +155,7 @@ export function RouterTracker({
 
   return (
     <div className={styles.tracker}>
-      {note && <p className={failed ? styles.error : styles.note}>{note}</p>}
+      {note && <p className={styles.note}>{note}</p>}
       <p className={styles.links}>
         <a href={`${explorer}/tx/${txHash}`} target="_blank" rel="noreferrer">
           {source} transaction
