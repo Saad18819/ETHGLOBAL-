@@ -237,7 +237,11 @@ export async function wrapEth(from: SourceId, amount: bigint, onStep: (label: st
 }
 
 type Step = { name: string; explorerUrl?: string };
-export type WalletResult = { steps: Step[] };
+/// `sourceTx` is the burn on the source chain, the transaction that proves the move happened.
+export type WalletResult = { steps: Step[]; sourceTx?: string };
+
+const burnOf = (steps: { name: string; txHash?: string }[]) =>
+  steps.find((step) => /burn/i.test(step.name) && step.txHash)?.txHash;
 
 type Kit = InstanceType<typeof import("@circle-fin/app-kit").AppKit>;
 type Adapter = Awaited<ReturnType<typeof import("@circle-fin/adapter-viem-v2").createViemAdapterFromProvider>>;
@@ -293,6 +297,7 @@ export async function sendThroughWallet(context: Context, onStep: (label: string
   for (const step of bridged.steps) {
     steps.push({ name: step.name, explorerUrl: "explorerUrl" in step ? (step.explorerUrl as string) : undefined });
   }
+  const sourceTx = burnOf(bridged.steps);
 
   const arrived = (await arcBalance(arcToken(asset), account)) - before;
   await switchChain(config, { chainId: arc.chainId });
@@ -409,7 +414,7 @@ export async function sendThroughWallet(context: Context, onStep: (label: string
     }
   }
 
-  return { steps };
+  return { steps, sourceTx };
 }
 
 /// Moves what this run produced to someone else, when the user asked for it.
@@ -482,7 +487,7 @@ async function loop(
 export async function bridgeBack(
   { token, amount, to }: { token: "USDC" | "EURC"; amount: string; to: SourceId },
   onStep: (label: string) => void,
-): Promise<{ steps: Step[] }> {
+): Promise<WalletResult> {
   const provider = (window as { ethereum?: unknown }).ethereum;
   if (!provider) throw new Error("No browser wallet found");
   const [{ AppKit }, { createViemAdapterFromProvider }] = await Promise.all([
@@ -513,5 +518,6 @@ export async function bridgeBack(
       name: step.name,
       explorerUrl: "explorerUrl" in step ? (step.explorerUrl as string) : undefined,
     })),
+    sourceTx: burnOf(bridged.steps),
   };
 }

@@ -16,7 +16,7 @@ import { sourceIds, sources, type SourceId } from "@/lib/chains";
 import { config } from "@/lib/config";
 import { arc, erc20Abi } from "@/lib/contracts";
 import { bridgeBack } from "@/lib/flows";
-import { record } from "@/lib/history";
+import { publish, record } from "@/lib/history";
 import { tokenBySymbol } from "@/lib/tokens";
 
 type Token = "USDC" | "EURC";
@@ -74,6 +74,7 @@ export function BridgeBack() {
         status: "done",
         steps: result.steps.map((step) => ({ name: step.name, href: step.explorerUrl })),
       });
+      publish({ tx: result.sourceTx, account: address, purpose: "back", summary, chain: "arc", asset: token, amount, status: "done" });
       await balance.refetch();
     } catch (cause) {
       const message = cause instanceof Error ? cause.message.split("\n")[0] : "The bridge did not go through";

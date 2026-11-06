@@ -19,7 +19,7 @@ import { arc } from "@/lib/contracts";
 import { cctpFees, resolveRecipient, StuckTransfer, wrapEth, type CctpFees, sendThroughRouter, sendThroughWallet, type RouterResult } from "@/lib/flows";
 import { MAX_LEVERAGE } from "@/lib/loop";
 import { spendable, useBalances } from "@/lib/balances";
-import { describe, record } from "@/lib/history";
+import { describe, publish, record } from "@/lib/history";
 import { protocolOf, protocols, swatchStyle } from "@/lib/brand";
 import { useMarkets } from "@/lib/markets";
 import { assets, bridgedAsset, defaultPlan, wrapsIntoWeth, normalizePlan, routeOf, viaUniswap, type NextId, type Plan } from "@/lib/plan";
@@ -157,6 +157,15 @@ export function Composer({
     setRun(undefined);
     setStuck(undefined);
     setJourney({ plan, phase: "source" });
+    // What the stats record about this move: what left which chain, and what for.
+    const shared = {
+      account: address,
+      purpose: plan.next,
+      summary: describe(plan),
+      chain: plan.from,
+      asset: plan.asset,
+      amount: plan.amount,
+    };
     try {
       const recipient =
         plan.next === "pay" ? await resolveRecipient(plan.recipient) : plan.to ? await resolveRecipient(plan.to) : address;
@@ -199,6 +208,7 @@ export function Composer({
           status: "sent",
           steps: [{ name: `Sent from ${sources[plan.from].label}`, href: `${result.explorer}/tx/${result.txHash}` }],
         });
+        publish({ ...shared, tx: result.txHash, status: "sent" });
       } else {
         const result = await sendThroughWallet(context, report);
         setJourney((current) => current && { ...current, phase: "done" });
@@ -209,6 +219,8 @@ export function Composer({
           status: "done",
           steps: result.steps.map((step) => ({ name: step.name, href: step.explorerUrl })),
         });
+        // A source swap or wrap ran first; the burn is still the proof the move left the chain.
+        publish({ ...shared, tx: result.sourceTx, status: "done" });
       }
       setStatus(undefined);
     } catch (cause) {
@@ -226,6 +238,7 @@ export function Composer({
           error: readable(cause),
           stuck: cause instanceof StuckTransfer ? { from: cause.from, tx: cause.txHash } : undefined,
         });
+        if (cause instanceof StuckTransfer) publish({ ...shared, tx: cause.txHash, status: "stuck" });
       }
     } finally {
       setBusy(false);
