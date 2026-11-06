@@ -5,6 +5,7 @@ import styles from "./Sentence.module.css";
 import { sources } from "@/lib/chains";
 import { liquidationDrop, MAX_LEVERAGE } from "@/lib/loop";
 import { holdingOf, short, spendable, type Holding } from "@/lib/balances";
+import { shortAddress } from "@/lib/format";
 import { pools } from "@/lib/pools";
 import { protocolOf, protocols, tokenColor } from "@/lib/brand";
 import { percent, usd, type Vault } from "@/lib/markets";
@@ -243,7 +244,4 @@ export function Sentence({
   );
 }
 
-function shortAddress(value: string) {
-  return /^0x[0-9a-fA-F]{40}$/.test(value) ? `${value.slice(0, 6)}…${value.slice(-4)}` : value;
-}
 

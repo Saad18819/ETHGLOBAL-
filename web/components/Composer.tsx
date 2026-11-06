@@ -13,7 +13,7 @@ import { Journey, later, phaseOf, type Phase } from "./Journey";
 import { NextPanel } from "./NextPanel";
 import { Options } from "./Options";
 import { Sentence } from "./Sentence";
-import { RouterTracker, Steps } from "./Tracker";
+import { RouterTracker } from "./Tracker";
 import { sources } from "@/lib/chains";
 import { arc } from "@/lib/contracts";
 import { cctpFees, resolveRecipient, StuckTransfer, wrapEth, type CctpFees, sendThroughRouter, sendThroughWallet, type RouterResult } from "@/lib/flows";
@@ -112,7 +112,12 @@ export function Composer({
   // wallet on Arc.
   const sized: Plan =
     unsized.next === "pay" && anchor === "target"
-      ? { ...unsized, amount: amountFor(unsized, prices, forwarderFee(unsized, fees.data)) ?? unsized.amount }
+      ? {
+          ...unsized,
+          amount:
+            amountFor(unsized, pricesFor(unsized, prices, pool.data?.rate), forwarderFee(unsized, fees.data)) ??
+            unsized.amount,
+        }
       : unsized;
   const lltv = markets.data?.markets.find((m) => m.collateral === "cirBTC")?.lltv;
   const chosenPool = usePoolState(poolById(sized.pool), markets.data?.prices);
@@ -149,7 +154,7 @@ export function Composer({
   const bridgeBps = (sized.speed === "fast" ? fees.data?.fast : fees.data?.standard) ?? 0;
   const arrivingUsd = grossUsd * (1 - bridgeBps / 10_000) - forwardFee;
   const keep = 0.999 * slippage;
-  const payPrice = prices?.[sized.payToken] ?? NaN;
+  const payPrice = pricesFor(sized, prices, pool.data?.rate)?.[sized.payToken] ?? NaN;
   const maxPay = (arrivingUsd * keep) / marginFor(sized) / payPrice;
   // Typed the amount moved: they get the most it covers.
   const plan =
@@ -375,13 +380,6 @@ export function Composer({
             />
           </div>
         )}
-        {run?.kind === "wallet" && (
-          <div className={styles.tracker}>
-            <Steps
-              steps={run.steps.map((step) => ({ label: step.name, state: "done" as const, href: step.explorerUrl }))}
-            />
-          </div>
-        )}
       </section>
 
       {!locked && (
@@ -462,6 +460,13 @@ function liquidityTarget(state: PoolState, prices: Record<string, number> | unde
 function marginFor(plan: Plan) {
   const swapless = assets[plan.asset].token.kind === "stable" && !viaUniswap(plan) && bridgedAsset(plan) === plan.payToken;
   return swapless ? 1.005 : 1.02;
+}
+
+/// Prices as the move will meet them. Through our contracts, EURC is bought on the Arc Uniswap pool,
+/// so its price there is the pool's rate rather than the market's.
+function pricesFor(plan: Plan, prices: Record<string, number> | undefined, poolRate: number | undefined) {
+  if (!prices || routeOf(plan) !== "router" || plan.payToken !== "EURC" || !poolRate) return prices;
+  return { ...prices, EURC: (prices.USDC ?? 1) / poolRate };
 }
 
 /// The forwarder's fee when the wallet route bridges USDC, in USD.
