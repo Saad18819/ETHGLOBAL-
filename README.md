@@ -12,7 +12,9 @@ Every part of it is a dropdown. "and then" is fixed. The panel on the side lists
 
 **Bounty:** Best Use of Bridge Kit for Non-USDC Assets, Built in Arc Studio.
 
-**Arc Studio project:** https://studio.arc.io/app/cb20c8eb-57e8-49eb-abda-1c60be57f23f
+**Arc Studio project (build + deploy):** https://studio.arc.io/app/cb20c8eb-57e8-49eb-abda-1c60be57f23f
+
+**Arc Studio project (security audit):** https://studio.arc.io/app/c329f65a-36b6-4a31-ba41-e2cdf176402e
 
 - **The live settlement contract on Arc was compiled and deployed by Arc Studio.** Studio's workspace has no Chainlink, Uniswap v4 or Permit2 packages, so we flatten `src/AndThenSettlement.sol` into [`studio/AndThenSettlement.flat.sol`](studio/AndThenSettlement.flat.sol) and send it with the Arc Studio CLI. Studio compiles it (0.8.28, viaIR, optimizer 200, cancun) and deploys it on Arc Testnet with our wallet as owner. Steps, prompt and checks: [`studio/README.md`](studio/README.md).
 - **Arc Studio audited every contract.** Report and fixes: [AUDIT.md](AUDIT.md).
