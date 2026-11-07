@@ -51,6 +51,24 @@ InvoiceBook                                    emit Settled(id, invoiceId, ...)
 - **Exact amounts, bounded prices.** Pay actions deliver exactly the requested amount. Every swap carries a price bound and every intent a deadline. Whatever is left after the CCTP fee, the swap and the receipt fee goes back to the payer on Arc. If the action can not run, everything is refunded and a failed receipt goes back.
 - **Funds only settle their own intent.** The intent travels inside the attested CCTP message from our router, and orders are keyed by its hash, so a second burn for the same order is refunded rather than run twice.
 
+## Uniswap v4 integration
+
+Where to look (developer feedback: [FEEDBACK.md](FEEDBACK.md)):
+
+| What | Code |
+| - | - |
+| Swaps straight against the v4 PoolManager: `unlock` → `unlockCallback` → `swap` → `settle` / `take`, exact-in and exact-out | [`src/UniswapV4Swapper.sol#L32-L86`](src/UniswapV4Swapper.sol#L32-L86) |
+| Pay an exact EURC amount (exact-out) or convert everything into EURC (exact-in) through the USDC/EURC pool on Arc | [`src/AndThenSettlement.sol#L220-L238`](src/AndThenSettlement.sol#L220-L238) |
+| Provide liquidity: swap half, then `PositionManager.modifyLiquidities` with `MINT_POSITION` + `SETTLE_PAIR`, position minted to the user | [`src/AndThenSettlement.sol#L255-L300`](src/AndThenSettlement.sol#L255-L300) |
+| Permit2 approval of the PositionManager from the contract | [`src/AndThenSettlement.sol#L309-L312`](src/AndThenSettlement.sol#L309-L312) |
+| Source chain: swap any token with a v4 pool into USDC, then bridge | [`src/AndThenRouter.sol#L61-L79`](src/AndThenRouter.sol#L61-L79) |
+| Quotes before signing: V4Quoter `quoteExactInputSingle` / `quoteExactOutputSingle`, StateView `getSlot0` / `getLiquidity` | [`web/lib/quote.ts`](web/lib/quote.ts) |
+| Wallet swaps through the Uniswap Trading API | [`web/lib/uniswap.ts`](web/lib/uniswap.ts), [`web/app/api/uniswap/[action]/route.ts`](web/app/api/uniswap/%5Baction%5D/route.ts) |
+| Wallet LP positions on Arc (Permit2 + `modifyLiquidities`) | [`web/lib/positions.ts`](web/lib/positions.ts) |
+| Tests against a real v4 PoolManager | [`test/AndThen.t.sol`](test/AndThen.t.sol) |
+
+Pool used on Arc testnet: USDC/EURC, fee 500, tickSpacing 10, no hooks, through PoolManager `0x8366a39CC670B4001A1121B8F6A443A643e40951` and PositionManager `0x6049c9a0e26405C0985f9E3685C87d0aE917f82B`.
+
 ## Chain facts that shaped the design
 
 - CCIP lanes with Arc testnet exist for Base Sepolia, Ethereum Sepolia and Polygon Amoy, not Arbitrum or Optimism. They are CCIP 2.0, so messages use `ExtraArgsV3`.
